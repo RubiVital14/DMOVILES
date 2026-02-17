@@ -15,7 +15,6 @@
         "expo-dev-client": "~6.0.20",
         "expo-sqlite": "~16.0.10",
         "expo-status-bar": "~3.0.9",
-        "json5": "^2.2.3",
         "react": "19.1.0",
         "react-native": "0.81.5",
         "react-native-reanimated": "~4.1.1",
