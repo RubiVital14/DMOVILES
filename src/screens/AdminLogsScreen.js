@@ -1,72 +1,122 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import { getLogsByType } from '../db/database';
-
-function groupByDate(logs) {
-  const map = {};
-  for (const l of logs) {
-    const d = new Date(l.ts);
-    const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
-    if (!map[key]) map[key] = [];
-    map[key].push(l);
-  }
-  return map;
-}
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { API_BASE_URL } from '../config/api';
 
 export default function AdminLogsScreen() {
-  const [tab, setTab] = useState('WORKER'); // WORKER | VISITOR
-  const [logs, setLogs] = useState([]);
+  const [type, setType] = useState('');   // WORKER | VISITOR
+  const [name, setName] = useState('');
+  const [area, setArea] = useState('');
+  const [from, setFrom] = useState('');   // 2026-03-01
+  const [to, setTo] = useState('');       // 2026-03-02
 
-  useEffect(() => {
-    (async () => {
-      const rows = await getLogsByType(tab);
-      setLogs(rows);
-    })();
-  }, [tab]);
+  const buildParams = (extra = {}) => {
+    const q = new URLSearchParams();
+    if (type) q.append('type', type);
+    if (name) q.append('name', name);
+    if (area) q.append('area', area);
+    if (from) q.append('from', from);
+    if (to) q.append('to', to);
 
-  const grouped = useMemo(() => groupByDate(logs), [logs]);
-  const dates = useMemo(() => Object.keys(grouped).sort().reverse(), [grouped]);
+    Object.entries(extra).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v).length > 0) q.append(k, v);
+    });
+
+    return q.toString();
+  };
+
+  const showEntradas = async () => {
+    try {
+      const qs = buildParams({ action: 'ENTRADA' });
+      const res = await fetch(`${API_BASE_URL}/logs?${qs}`);
+      const data = await res.json();
+      const n = data?.rows?.length || 0;
+      Alert.alert('ENTRADAS', `Encontré ${n} registros (según filtros).`);
+    } catch {
+      Alert.alert('Error', 'No pude conectar al backend.');
+    }
+  };
+
+  const showSalidas = async () => {
+    try {
+      const qs = buildParams({ action: 'SALIDA' });
+      const res = await fetch(`${API_BASE_URL}/logs?${qs}`);
+      const data = await res.json();
+      const n = data?.rows?.length || 0;
+      Alert.alert('SALIDAS', `Encontré ${n} registros (según filtros).`);
+    } catch {
+      Alert.alert('Error', 'No pude conectar al backend.');
+    }
+  };
+
+  const exportEventos = () => {
+    const qs = buildParams();
+    const url = `${API_BASE_URL}/export/logs.xlsx?${qs}`;
+    Alert.alert('Excel (EVENTOS)', 'Copia y abre en Chrome (Mac):\n\n' + url);
+  };
+
+  const exportConcentrado = () => {
+    const qs = buildParams();
+    const url = `${API_BASE_URL}/export/concentrado.xlsx?${qs}`;
+    Alert.alert('Excel (CONCENTRADO)', 'Copia y abre en Chrome (Mac):\n\n' + url);
+  };
+
+  const Btn = ({ title, onPress, bg = '#111' }) => (
+    <TouchableOpacity onPress={onPress} style={{ backgroundColor: bg, padding: 14, borderRadius: 10, marginBottom: 10 }}>
+      <Text style={{ color: 'white', fontWeight: '700', textAlign: 'center' }}>{title}</Text>
+    </TouchableOpacity>
+  );
 
   return (
-    <View style={{ flex: 1, padding: 16, gap: 12 }}>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <TouchableOpacity
-          onPress={() => setTab('WORKER')}
-          style={{ flex: 1, backgroundColor: tab === 'WORKER' ? '#111' : '#777', padding: 12, borderRadius: 10 }}
-        >
-          <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700' }}>Trabajadores</Text>
-        </TouchableOpacity>
+    <ScrollView contentContainerStyle={{ padding: 20 }}>
+      <Text style={{ fontSize: 22, fontWeight: '800', marginBottom: 12 }}>Logs + Exportar</Text>
 
-        <TouchableOpacity
-          onPress={() => setTab('VISITOR')}
-          style={{ flex: 1, backgroundColor: tab === 'VISITOR' ? '#111' : '#777', padding: 12, borderRadius: 10 }}
-        >
-          <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700' }}>Visitantes</Text>
-        </TouchableOpacity>
-      </View>
+      <TextInput
+        placeholder="type: WORKER o VISITOR (opcional)"
+        value={type}
+        onChangeText={setType}
+        autoCapitalize="characters"
+        style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 10, padding: 12, marginBottom: 10 }}
+      />
 
-      <ScrollView style={{ flex: 1 }}>
-        {dates.length === 0 ? (
-          <Text style={{ opacity: 0.7, marginTop: 20 }}>Sin registros aún.</Text>
-        ) : (
-          dates.map((date) => (
-            <View key={date} style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: '800', marginBottom: 6 }}>{date}</Text>
+      <TextInput
+        placeholder="Buscar nombre (opcional)"
+        value={name}
+        onChangeText={setName}
+        style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 10, padding: 12, marginBottom: 10 }}
+      />
 
-              {grouped[date].map((l) => {
-                const hhmm = new Date(l.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                return (
-                  <View key={l.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderColor: '#eee' }}>
-                    <Text style={{ fontWeight: '700' }}>
-                      {hhmm} — {l.full_name} — {l.action === 'IN' ? 'ENTRADA' : 'SALIDA'}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          ))
-        )}
-      </ScrollView>
-    </View>
+      <TextInput
+        placeholder="Área (solo workers, opcional)"
+        value={area}
+        onChangeText={setArea}
+        style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 10, padding: 12, marginBottom: 10 }}
+      />
+
+      <TextInput
+        placeholder="from: 2026-03-01 (opcional)"
+        value={from}
+        onChangeText={setFrom}
+        style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 10, padding: 12, marginBottom: 10 }}
+      />
+
+      <TextInput
+        placeholder="to: 2026-03-02 (opcional)"
+        value={to}
+        onChangeText={setTo}
+        style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 10, padding: 12, marginBottom: 14 }}
+      />
+
+      <Btn title="Ver ENTRADAS" onPress={showEntradas} bg="#222" />
+      <Btn title="Ver SALIDAS" onPress={showSalidas} bg="#444" />
+
+      <View style={{ height: 10 }} />
+
+      <Btn title="Exportar Excel (EVENTOS)" onPress={exportEventos} bg="#111" />
+      <Btn title="Exportar Excel (CONCENTRADO Entrada/Salida)" onPress={exportConcentrado} bg="#0b5" />
+
+      <Text style={{ marginTop: 10, color: '#666' }}>
+        Tip: abre el link en tu Mac (Chrome) y se descarga el Excel.
+      </Text>
+    </ScrollView>
   );
 }

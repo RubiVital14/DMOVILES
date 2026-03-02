@@ -5,7 +5,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 export default function MainScreen({ navigation }) {
   return (
     <View style={{ flex: 1, padding: 20, justifyContent: 'center' }}>
-      <Text style={{ fontSize: 28, fontWeight: '800', marginBottom: 8 }}>Kiosko</Text>
+      <Text style={{ fontSize: 28, fontWeight: '800', marginBottom: 8 }}>GateLogix, bienvenidos</Text>
       <Text style={{ marginBottom: 24, color: '#555' }}>Selecciona tu rol</Text>
 
       <TouchableOpacity
