@@ -1,206 +1,340 @@
-from fastapi import FastAPI, Query
+import io
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime
-import io
 from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from pydantic import BaseModel
 
-from db import (
-    init_db, admin_login,
-    create_worker, list_workers,
-    add_worker_log, register_visitor, visitor_exit,
-    get_logs, get_concentrado
-)
+import db
 
-@app.get("/export/concentrado.xlsx")
-def export_concentrado_xlsx(
-    type: Optional[str] = Query(None),
-    name: Optional[str] = Query(None),
-    area: Optional[str] = Query(None),
-    employee_no: Optional[int] = Query(None),
-    from_: Optional[str] = Query(None, alias="from"),
-    to: Optional[str] = Query(None),
-):
-    rows = get_concentrado({
-        "type": type,
-        "name": name,
-        "area": area,
-        "employee_no": employee_no,
-        "from": from_,
-        "to": to
-    })
+app = FastAPI(title="MiApp Backend")
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "concentrado"
-
-    headers = [
-      "type","employee_no","full_name","area","date",
-      "entrada_time","salida_time","entrada_at","salida_at","reason"
-    ]
-    ws.append(headers)
-
-    for r in rows:
-      ws.append([r.get(h) for h in headers])
-
-    # filtros y congelar encabezado
-    ws.freeze_panes = "A2"
-    last_row = ws.max_row
-    last_col = ws.max_column
-    if last_row >= 1:
-      ws.auto_filter.ref = f"A1:{chr(64+last_col)}{last_row}"
-
-    bio = io.BytesIO()
-    wb.save(bio)
-    bio.seek(0)
-
-    return StreamingResponse(
-        bio,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=concentrado.xlsx"},
-    )
-
-app = FastAPI()
-
-# CORS para que tu app móvil pueda pegarle sin broncas
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # para dev está bien
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---- Models ----
+db.init_db()
+
+OTP_STORE = {}
+
+
 class AdminLoginReq(BaseModel):
     username: str
     password: str
 
-class CreateWorkerReq(BaseModel):
+
+class AdminCreateReq(BaseModel):
+    username: str
+    password: str
+
+
+class ChangePasswordReq(BaseModel):
+    username: str
+    current_password: str
+    new_password: str
+
+
+class WorkerCreateReq(BaseModel):
     full_name: str
     area: str
     email: Optional[str] = None
     face_key: Optional[str] = None
 
-class WorkerLogReq(BaseModel):
-    employee_no: int
-    action: str  # ENTRADA | SALIDA
 
-class VisitorReq(BaseModel):
+class WorkerUpdateReq(BaseModel):
     full_name: str
-    reason: str
+    area: str
+    email: Optional[str] = None
+    face_key: Optional[str] = None
 
-class VisitorExitReq(BaseModel):
-    visitor_id: int
 
-@app.on_event("startup")
-def on_startup():
-    init_db()
+class LogCreateReq(BaseModel):
+    worker_id: int
+    action: str
+    log_type: str = "worker"
+    method: str = "Rostro"
+
+
+class SendOtpReq(BaseModel):
+    worker_id: int
+    action: str
+
+
+class VerifyOtpReq(BaseModel):
+    worker_id: int
+    action: str
+    code: str
+
+
+class VisitorCreateReq(BaseModel):
+    full_name: str
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    reason: Optional[str] = None
+    photo_uri: Optional[str] = None
+
+
+def fake_send_email(to_email: str, code: str):
+    print(f"[OTP DEMO] Enviando código {code} a {to_email}")
+
 
 @app.get("/health")
 def health():
     return {"ok": True}
 
-# ---- Admin ----
-@app.post("/admin/login")
-def admin_login_api(req: AdminLoginReq):
-    ok = admin_login(req.username, req.password)
-    return {"ok": ok}
 
-# ---- Workers ----
-@app.post("/workers")
-def create_worker_api(req: CreateWorkerReq):
-    worker_id, emp_no = create_worker(req.full_name, req.area, req.email, req.face_key)
-    return {"ok": True, "id": worker_id, "employee_no": emp_no}
+@app.post("/admin/login")
+def admin_login(body: AdminLoginReq):
+    admin = db.admin_login(body.username, body.password)
+    if not admin:
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    return {"ok": True, "admin": {"username": admin["username"]}}
+
+
+@app.get("/admins")
+def get_admins():
+    try:
+        return db.list_admins()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/admins")
+def post_admin(body: AdminCreateReq):
+    try:
+        return db.create_admin(body.username, body.password)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/admin/change-password")
+def post_change_password(body: ChangePasswordReq):
+    try:
+        db.change_admin_password(
+            username=body.username,
+            current_password=body.current_password,
+            new_password=body.new_password,
+        )
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.get("/workers")
-def list_workers_api():
-    return {"ok": True, "rows": list_workers()}
+def get_workers():
+    try:
+        return db.list_workers()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/worker-log")
-def worker_log_api(req: WorkerLogReq):
-    at = datetime.utcnow().isoformat()
-    name = add_worker_log(req.employee_no, req.action, at)
-    if name is None:
-        return {"ok": False, "error": "NOT_FOUND"}
-    return {"ok": True, "name": name}
 
-# ---- Visitors ----
-@app.post("/visitors")
-def register_visitor_api(req: VisitorReq):
-    at = datetime.utcnow().isoformat()
-    vid = register_visitor(req.full_name, req.reason, at)
-    return {"ok": True, "visitor_id": vid}
+@app.post("/workers")
+def post_worker(body: WorkerCreateReq):
+    try:
+        return db.create_worker(
+            full_name=body.full_name,
+            area=body.area,
+            email=body.email,
+            face_key=body.face_key,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/visitors/exit")
-def visitor_exit_api(req: VisitorExitReq):
-    at = datetime.utcnow().isoformat()
-    ok = visitor_exit(req.visitor_id, at)
-    return {"ok": ok}
 
-# ---- Logs (JSON + filtros) ----
+@app.put("/workers/{worker_id}")
+def put_worker(worker_id: int, body: WorkerUpdateReq):
+    try:
+        updated = db.update_worker(
+            worker_id=worker_id,
+            full_name=body.full_name,
+            area=body.area,
+            email=body.email,
+            face_key=body.face_key,
+        )
+
+        if not updated:
+            raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/workers/{worker_id}")
+def delete_worker(worker_id: int):
+    try:
+        deleted = db.delete_worker(worker_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/logs")
-def logs_api(
-    type: Optional[str] = Query(None),
-    action: Optional[str] = Query(None),
-    name: Optional[str] = Query(None),
-    area: Optional[str] = Query(None),
-    employee_no: Optional[int] = Query(None),
-    from_: Optional[str] = Query(None, alias="from"),
-    to: Optional[str] = Query(None),
-):
-    rows = get_logs({
-        "type": type,
-        "action": action,
-        "name": name,
-        "area": area,
-        "employee_no": employee_no,
-        "from": from_,
-        "to": to
-    })
-    return {"ok": True, "rows": rows}
+def get_logs():
+    try:
+        return db.list_logs()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# ---- Export Excel (mismos filtros) ----
-@app.get("/export/logs.xlsx")
-def export_logs_xlsx(
-    type: Optional[str] = Query(None),
-    action: Optional[str] = Query(None),
-    name: Optional[str] = Query(None),
-    area: Optional[str] = Query(None),
-    employee_no: Optional[int] = Query(None),
-    from_: Optional[str] = Query(None, alias="from"),
-    to: Optional[str] = Query(None),
-):
-    rows = get_logs({
-        "type": type,
-        "action": action,
-        "name": name,
-        "area": area,
-        "employee_no": employee_no,
-        "from": from_,
-        "to": to
-    })
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "logs"
+@app.post("/logs")
+def post_log(body: LogCreateReq):
+    try:
+        return db.create_log(
+            worker_id=body.worker_id,
+            action=body.action,
+            log_type=body.log_type,
+            method=body.method,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    if not rows:
-        ws.append(["Sin resultados"])
-    else:
-        headers = list(rows[0].keys())
+
+@app.post("/auth/send-otp")
+def send_otp(body: SendOtpReq):
+    try:
+        workers = db.list_workers()
+        worker = next((w for w in workers if int(w["id"]) == int(body.worker_id)), None)
+
+        if not worker:
+            raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+
+        if not worker.get("email"):
+            raise HTTPException(status_code=400, detail="El trabajador no tiene correo registrado")
+
+        code = "123456"
+        OTP_STORE[str(body.worker_id)] = {
+            "code": code,
+            "action": body.action,
+        }
+
+        fake_send_email(worker["email"], code)
+
+        return {"ok": True, "message": "Código enviado", "demo_code": code}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/verify-otp")
+def verify_otp(body: VerifyOtpReq):
+    try:
+        saved = OTP_STORE.get(str(body.worker_id))
+
+        if not saved:
+            raise HTTPException(status_code=400, detail="No hay código generado para este trabajador")
+
+        if saved["action"] != body.action:
+            raise HTTPException(status_code=400, detail="La acción no coincide con el código generado")
+
+        if str(saved["code"]) != str(body.code).strip():
+            raise HTTPException(status_code=400, detail="Código incorrecto")
+
+        result = db.create_log(
+            worker_id=body.worker_id,
+            action=body.action,
+            log_type="worker",
+            method="Correo",
+        )
+
+        del OTP_STORE[str(body.worker_id)]
+        return {"ok": True, "log": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/visitors")
+def get_visitors():
+    try:
+        return db.list_visitors()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/visitors")
+def post_visitor(body: VisitorCreateReq):
+    try:
+        return db.create_visitor(
+            full_name=body.full_name,
+            company=body.company,
+            phone=body.phone,
+            reason=body.reason,
+            photo_uri=body.photo_uri,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/export/asistencia.xlsx")
+def export_asistencia():
+    try:
+        rows = db.list_logs()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Asistencia"
+
+        headers = [
+            "Nombre",
+            "No. Empleado",
+            "Departamento",
+            "Tipo",
+            "Método",
+            "Fecha y Hora",
+        ]
         ws.append(headers)
+
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="000000")
+            cell.fill = PatternFill("solid", fgColor="D9D9D9")
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
         for r in rows:
-            ws.append([r.get(h) for h in headers])
+            ws.append([
+                r.get("full_name", ""),
+                r.get("employee_no", ""),
+                r.get("area", ""),
+                r.get("action", ""),
+                r.get("method", "Rostro"),
+                r.get("created_at", ""),
+            ])
 
-    bio = io.BytesIO()
-    wb.save(bio)
-    bio.seek(0)
+        widths = {
+            "A": 22,
+            "B": 16,
+            "C": 20,
+            "D": 14,
+            "E": 14,
+            "F": 24,
+        }
 
-    return StreamingResponse(
-        bio,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=logs.xlsx"},
-    )
+        for col, width in widths.items():
+            ws.column_dimensions[col].width = width
+
+        bio = io.BytesIO()
+        wb.save(bio)
+        bio.seek(0)
+
+        return StreamingResponse(
+            bio,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": 'attachment; filename="asistencia.xlsx"'},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

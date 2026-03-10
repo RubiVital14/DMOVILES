@@ -1,96 +1,179 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { API_BASE_URL } from '../config/api';
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  useWindowDimensions,
+  ScrollView,
+} from "react-native";
+
+import { createWorker } from "../services/api";
 
 export default function AdminCreateWorkerScreen({ navigation }) {
-  const [fullName, setFullName] = useState('');
-  const [area, setArea] = useState('');
-  const [email, setEmail] = useState('');
-  const [faceKey, setFaceKey] = useState('');
-  const [loading, setLoading] = useState(false);
 
-  const save = async () => {
+  const { width } = useWindowDimensions();
+
+  const isTablet = width > 900;
+
+  const [name, setName] = useState("");
+  const [employeeNo, setEmployeeNo] = useState("");
+  const [area, setArea] = useState("");
+  const [email, setEmail] = useState("");
+
+  const saveWorker = async () => {
+
+    if (!name || !employeeNo || !area) {
+      Alert.alert("Error", "Completa todos los campos");
+      return;
+    }
+
     try {
-      if (!fullName.trim() || !area.trim()) {
-        Alert.alert('Error', 'Nombre y área son obligatorios');
-        return;
-      }
 
-      setLoading(true);
-
-      const res = await fetch(`${API_BASE_URL}/workers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name: fullName.trim(),
-          area: area.trim(),
-          email: email.trim() || null,
-          face_key: faceKey.trim() || null,
-        }),
+      await createWorker({
+        full_name: name,
+        employee_no: employeeNo,
+        area: area,
+        email: email
       });
 
-      const data = await res.json().catch(() => null);
+      Alert.alert("Correcto", "Trabajador registrado");
 
-      if (!res.ok || !data?.ok) {
-        const msg = data?.error || `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-
-      Alert.alert('Listo ✅', `Trabajador registrado\nNo. Empleado: ${data.employee_no}`);
-      setFullName('');
-      setArea('');
-      setEmail('');
-      setFaceKey('');
       navigation.goBack();
+
     } catch (e) {
-      Alert.alert('Error al guardar', String(e?.message || e));
-    } finally {
-      setLoading(false);
+      Alert.alert("Error", e.message);
     }
   };
 
   return (
-    <View style={{ flex: 1, padding: 20, justifyContent: 'center' }}>
-      <Text style={{ fontSize: 22, fontWeight: '800', marginBottom: 12 }}>Registrar trabajador</Text>
-      <Text style={{ color: '#666', marginBottom: 18 }}>El número de empleado se asigna automáticamente.</Text>
+    <View style={styles.screen}>
 
-      <TextInput
-        placeholder="Nombre completo"
-        value={fullName}
-        onChangeText={setFullName}
-        style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 10, padding: 12, marginBottom: 10 }}
-      />
+      <ScrollView contentContainerStyle={styles.container}>
 
-      <TextInput
-        placeholder="Área (ej. Almacén)"
-        value={area}
-        onChangeText={setArea}
-        style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 10, padding: 12, marginBottom: 10 }}
-      />
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.back}>← Volver</Text>
+        </TouchableOpacity>
 
-      <TextInput
-        placeholder="Correo (opcional)"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 10, padding: 12, marginBottom: 10 }}
-      />
+        <Text style={styles.title}>Nuevo Trabajador</Text>
 
-      <TextInput
-        placeholder="faceKey (opcional)"
-        value={faceKey}
-        onChangeText={setFaceKey}
-        autoCapitalize="characters"
-        style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 10, padding: 12, marginBottom: 14 }}
-      />
+        <Text style={styles.subtitle}>
+          Registrar empleado para control de asistencia
+        </Text>
 
-      <TouchableOpacity
-        onPress={loading ? null : save}
-        style={{ backgroundColor: '#111', padding: 14, borderRadius: 10, alignItems: 'center', opacity: loading ? 0.7 : 1 }}
-      >
-        {loading ? <ActivityIndicator /> : <Text style={{ color: 'white', fontWeight: '700' }}>Guardar</Text>}
-      </TouchableOpacity>
+        <View style={[styles.card, isTablet && { maxWidth: 700 }]}>
+
+          <Text style={styles.label}>Nombre completo</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej: Rubi Sanchez"
+            placeholderTextColor="#8ea0c0"
+            value={name}
+            onChangeText={setName}
+          />
+
+          <Text style={styles.label}>Número de empleado</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej: 123"
+            placeholderTextColor="#8ea0c0"
+            value={employeeNo}
+            onChangeText={setEmployeeNo}
+          />
+
+          <Text style={styles.label}>Departamento / Área</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej: Tecnología"
+            placeholderTextColor="#8ea0c0"
+            value={area}
+            onChangeText={setArea}
+          />
+
+          <Text style={styles.label}>Correo (opcional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="correo@empresa.com"
+            placeholderTextColor="#8ea0c0"
+            value={email}
+            onChangeText={setEmail}
+          />
+
+          <TouchableOpacity style={styles.button} onPress={saveWorker}>
+            <Text style={styles.buttonText}>Guardar trabajador</Text>
+          </TouchableOpacity>
+
+        </View>
+
+      </ScrollView>
+
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+
+  screen: {
+    flex: 1,
+    backgroundColor: "#07111f",
+  },
+
+  container: {
+    padding: 30,
+    alignItems: "center",
+  },
+
+  back: {
+    color: "#9fb2d9",
+    alignSelf: "flex-start",
+    marginBottom: 20,
+  },
+
+  title: {
+    fontSize: 34,
+    fontWeight: "700",
+    color: "white",
+  },
+
+  subtitle: {
+    color: "#9fb2d9",
+    marginBottom: 30,
+  },
+
+  card: {
+    width: "100%",
+    maxWidth: 500,
+    backgroundColor: "#0f1b34",
+    borderRadius: 20,
+    padding: 25,
+  },
+
+  label: {
+    color: "#c8d6f3",
+    marginBottom: 6,
+    marginTop: 10,
+  },
+
+  input: {
+    backgroundColor: "#111827",
+    borderRadius: 10,
+    padding: 14,
+    color: "white",
+  },
+
+  button: {
+    backgroundColor: "#7c3aed",
+    marginTop: 25,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  buttonText: {
+    color: "white",
+    fontWeight: "700",
+  }
+
+});
