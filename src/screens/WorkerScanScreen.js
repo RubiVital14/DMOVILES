@@ -104,14 +104,16 @@ export default function WorkerScanScreen({ navigation }) {
   };
 
   const registerLogForWorker = async (worker, action, method) => {
-    await createLog({
-      full_name: worker.full_name,
-      employee_no: worker.employee_no,
-      area: worker.area,
-      action,
-      method,
-    });
-  };
+  await createLog({
+    worker_id: getWorkerId(worker),
+    full_name: worker.full_name,
+    employee_no: String(worker.employee_no),
+    area: worker.area,
+    action,
+    method,
+    log_type: "worker",
+  });
+};
 
   // Demo temporal de reconocimiento facial
   const recognizeWorkerFromPhoto = async () => {

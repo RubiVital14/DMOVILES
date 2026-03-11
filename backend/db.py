@@ -1,5 +1,6 @@
 import sqlite3
 from typing import Optional
+from datetime import datetime
 
 DB_PATH = "kiosko.db"
 
@@ -8,6 +9,10 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def now_str():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def init_db():
@@ -36,9 +41,9 @@ def init_db():
             full_name TEXT NOT NULL,
             employee_no TEXT NOT NULL UNIQUE,
             area TEXT NOT NULL,
-            email TEXT,
+            email TEXT NOT NULL,
             face_key TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL
         )
     """)
 
@@ -46,12 +51,14 @@ def init_db():
     cur.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id INTEGER NOT NULL,
             full_name TEXT NOT NULL,
             employee_no TEXT NOT NULL,
             area TEXT NOT NULL,
             action TEXT NOT NULL,
             method TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            log_type TEXT NOT NULL,
+            created_at TEXT NOT NULL
         )
     """)
 
@@ -64,7 +71,7 @@ def init_db():
             phone TEXT,
             reason TEXT,
             photo_uri TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL
         )
     """)
 
@@ -99,27 +106,33 @@ def admin_login(username: str, password: str):
 
 
 def create_admin(username: str, password: str, email: Optional[str] = None):
+    username = (username or "").strip()
+    password = (password or "").strip()
+    email_value = (email or "").strip().lower()
+
+    if not username:
+        raise Exception("El usuario es obligatorio")
+    if not password:
+        raise Exception("La contraseña es obligatoria")
+    if not email_value:
+        raise Exception("El correo es obligatorio")
+
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("SELECT id FROM admins WHERE username = ?", (username,))
-    exists = cur.fetchone()
-    if exists:
+    if cur.fetchone():
         conn.close()
         raise Exception("Ese usuario administrador ya existe")
 
-    email_value = (email or "").strip().lower() or None
-
-    if email_value:
-        cur.execute("SELECT id FROM admins WHERE lower(trim(email)) = ?", (email_value,))
-        email_exists = cur.fetchone()
-        if email_exists:
-            conn.close()
-            raise Exception("Ese correo ya está registrado")
+    cur.execute("SELECT id FROM admins WHERE lower(trim(email)) = ?", (email_value,))
+    if cur.fetchone():
+        conn.close()
+        raise Exception("Ese correo ya está registrado")
 
     cur.execute(
         "INSERT INTO admins (username, password, email) VALUES (?, ?, ?)",
-        (username.strip(), password.strip(), email_value)
+        (username, password, email_value)
     )
     conn.commit()
 
@@ -193,7 +206,7 @@ def reset_admin_password_by_email(email: str, new_password: str):
 # =========================
 def _next_employee_no(conn) -> str:
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) as total FROM workers")
+    cur.execute("SELECT COUNT(*) AS total FROM workers")
     total = cur.fetchone()["total"]
     return str(total + 1)
 
@@ -238,10 +251,11 @@ def get_worker_by_email(email: str):
 
 
 def create_worker(data: dict):
-    full_name = data.get("full_name", "").strip()
-    area = data.get("area", "").strip()
-    email = data.get("email", "").strip().lower()
+    full_name = (data.get("full_name") or "").strip()
+    area = (data.get("area") or "").strip()
+    email = (data.get("email") or "").strip().lower()
     face_key = data.get("face_key")
+    created_at = now_str()
 
     if not full_name:
         raise Exception("El nombre es obligatorio")
@@ -254,17 +268,16 @@ def create_worker(data: dict):
     cur = conn.cursor()
 
     cur.execute("SELECT id FROM workers WHERE lower(trim(email)) = ?", (email,))
-    email_exists = cur.fetchone()
-    if email_exists:
+    if cur.fetchone():
         conn.close()
         raise Exception("Ya existe un trabajador con ese correo")
 
     employee_no = _next_employee_no(conn)
 
     cur.execute("""
-        INSERT INTO workers (full_name, employee_no, area, email, face_key)
-        VALUES (?, ?, ?, ?, ?)
-    """, (full_name, employee_no, area, email, face_key))
+        INSERT INTO workers (full_name, employee_no, area, email, face_key, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (full_name, employee_no, area, email, face_key, created_at))
     conn.commit()
 
     worker_id = cur.lastrowid
@@ -279,9 +292,9 @@ def create_worker(data: dict):
 
 
 def update_worker(worker_id: int, body):
-    full_name = body.full_name.strip()
-    area = body.area.strip()
-    email = body.email.strip().lower()
+    full_name = (body.full_name or "").strip()
+    area = (body.area or "").strip()
+    email = (body.email or "").strip().lower()
     face_key = body.face_key
 
     if not full_name:
@@ -295,8 +308,7 @@ def update_worker(worker_id: int, body):
     cur = conn.cursor()
 
     cur.execute("SELECT id FROM workers WHERE id = ?", (worker_id,))
-    exists = cur.fetchone()
-    if not exists:
+    if not cur.fetchone():
         conn.close()
         return None
 
@@ -305,8 +317,7 @@ def update_worker(worker_id: int, body):
         WHERE lower(trim(email)) = ?
         AND id != ?
     """, (email, worker_id))
-    email_exists = cur.fetchone()
-    if email_exists:
+    if cur.fetchone():
         conn.close()
         raise Exception("Otro trabajador ya usa ese correo")
 
@@ -332,8 +343,7 @@ def delete_worker(worker_id: int):
     cur = conn.cursor()
 
     cur.execute("SELECT id FROM workers WHERE id = ?", (worker_id,))
-    exists = cur.fetchone()
-    if not exists:
+    if not cur.fetchone():
         conn.close()
         return False
 
@@ -350,7 +360,7 @@ def list_logs():
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, full_name, employee_no, area, action, method, created_at
+        SELECT id, worker_id, full_name, employee_no, area, action, method, log_type, created_at
         FROM logs
         ORDER BY id DESC
     """)
@@ -359,19 +369,29 @@ def list_logs():
     return [dict(r) for r in rows]
 
 
-def create_log(full_name: str, employee_no: str, area: str, action: str, method: str):
+def create_log(
+    worker_id: int,
+    full_name: str,
+    employee_no: str,
+    area: str,
+    action: str,
+    method: str,
+    log_type: str
+):
+    created_at = now_str()
+
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT INTO logs (full_name, employee_no, area, action, method)
-        VALUES (?, ?, ?, ?, ?)
-    """, (full_name, employee_no, area, action, method))
+        INSERT INTO logs (worker_id, full_name, employee_no, area, action, method, log_type, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (worker_id, full_name, employee_no, area, action, method, log_type, created_at))
     conn.commit()
 
     log_id = cur.lastrowid
     cur.execute("""
-        SELECT id, full_name, employee_no, area, action, method, created_at
+        SELECT id, worker_id, full_name, employee_no, area, action, method, log_type, created_at
         FROM logs
         WHERE id = ?
     """, (log_id,))
@@ -401,6 +421,7 @@ def create_visitor(full_name: str, company: str, phone: str, reason: str, photo_
     company = (company or "").strip()
     phone = (phone or "").strip()
     reason = (reason or "").strip()
+    created_at = now_str()
 
     if not full_name:
         raise Exception("El nombre del visitante es obligatorio")
@@ -409,9 +430,9 @@ def create_visitor(full_name: str, company: str, phone: str, reason: str, photo_
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT INTO visitors (full_name, company, phone, reason, photo_uri)
-        VALUES (?, ?, ?, ?, ?)
-    """, (full_name, company, phone, reason, photo_uri))
+        INSERT INTO visitors (full_name, company, phone, reason, photo_uri, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (full_name, company, phone, reason, photo_uri, created_at))
     conn.commit()
 
     visitor_id = cur.lastrowid

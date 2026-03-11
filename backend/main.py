@@ -34,9 +34,6 @@ OTP_STORE = {}
 ADMIN_RESET_STORE = {}
 
 
-# =========================
-# MODELOS
-# =========================
 class SendOtpReq(BaseModel):
     worker_id: int
     action: str
@@ -97,23 +94,15 @@ class VerifyAdminResetReq(BaseModel):
     new_password: str
 
 
-# =========================
-# HELPERS
-# =========================
 def normalize_action(action: str) -> str:
     value = (action or "").strip().lower()
-
     if value in ["in", "entrada"]:
         return "Entrada"
     if value in ["out", "salida"]:
         return "Salida"
-
     return action
 
 
-# =========================
-# OTP WORKERS
-# =========================
 @app.post("/send-otp")
 def send_otp(body: SendOtpReq):
     try:
@@ -182,11 +171,13 @@ def verify_otp(body: VerifyOtpReq):
             raise HTTPException(status_code=404, detail="Trabajador no encontrado")
 
         log = db.create_log(
+            worker_id=worker["id"],
             full_name=worker["full_name"],
             employee_no=str(worker["employee_no"]),
             area=worker["area"],
             action=action,
-            method="Código"
+            method="Código",
+            log_type="worker"
         )
 
         del OTP_STORE[str(body.worker_id)]
@@ -202,9 +193,6 @@ def verify_otp(body: VerifyOtpReq):
         raise HTTPException(status_code=500, detail=f"Error al verificar OTP: {str(e)}")
 
 
-# =========================
-# WORKERS
-# =========================
 @app.get("/workers")
 def get_workers():
     try:
@@ -225,12 +213,9 @@ def create_worker(body: WorkerCreateReq):
 def put_worker(worker_id: int, body: WorkerUpdateReq):
     try:
         updated = db.update_worker(worker_id, body)
-
         if not updated:
             raise HTTPException(status_code=404, detail="Trabajador no encontrado")
-
         return updated
-
     except HTTPException:
         raise
     except Exception as e:
@@ -241,21 +226,15 @@ def put_worker(worker_id: int, body: WorkerUpdateReq):
 def delete_worker(worker_id: int):
     try:
         deleted = db.delete_worker(worker_id)
-
         if not deleted:
             raise HTTPException(status_code=404, detail="Trabajador no encontrado")
-
         return {"ok": True}
-
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =========================
-# LOGS
-# =========================
 @app.get("/logs")
 def get_logs():
     try:
@@ -268,19 +247,18 @@ def get_logs():
 def create_log(payload: dict):
     try:
         return db.create_log(
+            worker_id=payload["worker_id"],
             full_name=payload["full_name"],
             employee_no=str(payload["employee_no"]),
             area=payload["area"],
             action=payload["action"],
             method=payload["method"],
+            log_type=payload["log_type"],
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =========================
-# VISITORS
-# =========================
 @app.get("/visitors")
 def get_visitors():
     try:
@@ -303,9 +281,6 @@ def post_visitor(body: VisitorCreateReq):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =========================
-# ADMINS
-# =========================
 @app.post("/admin/login")
 def admin_login(body: AdminLoginReq):
     try:
