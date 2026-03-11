@@ -8,8 +8,13 @@ import {
   StyleSheet,
   useWindowDimensions,
   ScrollView,
+  Modal,
 } from "react-native";
-import { adminLogin } from "../services/api";
+import {
+  adminLogin,
+  forgotAdminPassword,
+  verifyAdminReset,
+} from "../services/api";
 
 export default function AdminLoginScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -18,6 +23,12 @@ export default function AdminLoginScreen({ navigation }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [resetStep, setResetStep] = useState(1);
 
   const handleLogin = async () => {
     try {
@@ -43,6 +54,57 @@ export default function AdminLoginScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleForgotPassword = async () => {
+    try {
+      if (!resetEmail.trim()) {
+        Alert.alert("Error", "Ingresa el correo");
+        return;
+      }
+
+      await forgotAdminPassword({
+        email: resetEmail.trim().toLowerCase(),
+      });
+
+      setResetStep(2);
+      Alert.alert("Correcto", "Se envió un código al correo");
+    } catch (e) {
+      Alert.alert("Error", e?.message || "No se pudo enviar el código");
+    }
+  };
+
+  const handleVerifyReset = async () => {
+    try {
+      if (!resetEmail.trim() || !resetCode.trim() || !newPassword.trim()) {
+        Alert.alert("Error", "Completa todos los campos");
+        return;
+      }
+
+      await verifyAdminReset({
+        email: resetEmail.trim().toLowerCase(),
+        code: resetCode.trim(),
+        new_password: newPassword.trim(),
+      });
+
+      setShowForgotModal(false);
+      setResetEmail("");
+      setResetCode("");
+      setNewPassword("");
+      setResetStep(1);
+
+      Alert.alert("Correcto", "Contraseña actualizada");
+    } catch (e) {
+      Alert.alert("Error", e?.message || "No se pudo cambiar la contraseña");
+    }
+  };
+
+  const closeForgotModal = () => {
+    setShowForgotModal(false);
+    setResetEmail("");
+    setResetCode("");
+    setNewPassword("");
+    setResetStep(1);
   };
 
   return (
@@ -91,9 +153,72 @@ export default function AdminLoginScreen({ navigation }) {
                 {loading ? "Entrando..." : "Entrar"}
               </Text>
             </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setShowForgotModal(true)}>
+              <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
+
+      <Modal visible={showForgotModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.card}>
+            <Text style={styles.title}>Recuperar contraseña</Text>
+
+            <Text style={styles.label}>Correo del administrador</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="correo@empresa.com"
+              placeholderTextColor="#7d8ba8"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={resetEmail}
+              onChangeText={setResetEmail}
+            />
+
+            {resetStep === 2 && (
+              <>
+                <Text style={styles.label}>Código</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="123456"
+                  placeholderTextColor="#7d8ba8"
+                  value={resetCode}
+                  onChangeText={setResetCode}
+                  keyboardType="number-pad"
+                />
+
+                <Text style={styles.label}>Nueva contraseña</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nueva contraseña"
+                  placeholderTextColor="#7d8ba8"
+                  secureTextEntry
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                />
+              </>
+            )}
+
+            <TouchableOpacity
+              style={styles.loginBtn}
+              onPress={resetStep === 1 ? handleForgotPassword : handleVerifyReset}
+            >
+              <Text style={styles.loginBtnText}>
+                {resetStep === 1 ? "Enviar código" : "Cambiar contraseña"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.loginBtn, styles.cancelBtn]}
+              onPress={closeForgotModal}
+            >
+              <Text style={styles.loginBtnText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -167,6 +292,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
   },
+  cancelBtn: {
+    backgroundColor: "#475569",
+    marginTop: 10,
+  },
   loginBtnDisabled: {
     opacity: 0.65,
   },
@@ -174,5 +303,16 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 17,
+  },
+  forgotText: {
+    color: "#9fb2d9",
+    textAlign: "center",
+    marginTop: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.72)",
+    justifyContent: "center",
+    padding: 20,
   },
 });

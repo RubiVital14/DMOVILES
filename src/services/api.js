@@ -22,9 +22,7 @@ async function handleJson(res) {
   return data;
 }
 
-// =========================
 // EMPLEADOS
-// =========================
 export async function fetchWorkers() {
   const res = await fetch(`${API_BASE_URL}/workers`);
   return handleJson(res);
@@ -33,24 +31,18 @@ export async function fetchWorkers() {
 export async function createWorker(payload) {
   const res = await fetch(`${API_BASE_URL}/workers`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
   return handleJson(res);
 }
 
 export async function updateWorker(id, payload) {
   const res = await fetch(`${API_BASE_URL}/workers/${id}`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
   return handleJson(res);
 }
 
@@ -58,40 +50,29 @@ export async function deleteWorker(id) {
   const res = await fetch(`${API_BASE_URL}/workers/${id}`, {
     method: "DELETE",
   });
-
   return handleJson(res);
 }
 
-// =========================
-// OTP
-// =========================
+// OTP TRABAJADOR
 export async function sendOtp(payload) {
   const res = await fetch(`${API_BASE_URL}/send-otp`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
   return handleJson(res);
 }
 
 export async function verifyOtp(payload) {
   const res = await fetch(`${API_BASE_URL}/verify-otp`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
   return handleJson(res);
 }
 
-// =========================
-// LOGS / ASISTENCIA
-// =========================
+// LOGS
 export async function fetchLogs() {
   const res = await fetch(`${API_BASE_URL}/logs`);
   return handleJson(res);
@@ -100,12 +81,9 @@ export async function fetchLogs() {
 export async function createLog(payload) {
   const res = await fetch(`${API_BASE_URL}/logs`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
   return handleJson(res);
 }
 
@@ -113,9 +91,7 @@ export function getAsistenciaExcelUrl() {
   return `${API_BASE_URL}/export/asistencia.xlsx`;
 }
 
-// =========================
 // VISITANTES
-// =========================
 export async function fetchVisitors() {
   const res = await fetch(`${API_BASE_URL}/visitors`);
   return handleJson(res);
@@ -124,50 +100,56 @@ export async function fetchVisitors() {
 export async function createVisitor(payload) {
   const res = await fetch(`${API_BASE_URL}/visitors`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
   return handleJson(res);
 }
 
-// =========================
 // ADMIN
-// =========================
 export async function adminLogin(payload) {
   const res = await fetch(`${API_BASE_URL}/admin/login`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
   return handleJson(res);
 }
 
 export async function createAdmin(payload) {
   const res = await fetch(`${API_BASE_URL}/admins`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
   return handleJson(res);
 }
 
 export async function changeAdminPassword(payload) {
   const res = await fetch(`${API_BASE_URL}/admins/change-password`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
   return handleJson(res);
 }
+
+export async function forgotAdminPassword(payload) {
+  const res = await fetch(`${API_BASE_URL}/admins/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleJson(res);
+}
+
+export async function verifyAdminReset(payload) {
+  const res = await fetch(`${API_BASE_URL}/admins/verify-reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleJson(res);
+}
+
+export { API_BASE_URL };

@@ -14,20 +14,22 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
-    # =========================
     # ADMINS
-    # =========================
     cur.execute("""
         CREATE TABLE IF NOT EXISTS admins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL
+            password TEXT NOT NULL,
+            email TEXT
         )
     """)
 
-    # =========================
+    try:
+        cur.execute("ALTER TABLE admins ADD COLUMN email TEXT")
+    except sqlite3.OperationalError:
+        pass
+
     # WORKERS
-    # =========================
     cur.execute("""
         CREATE TABLE IF NOT EXISTS workers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,9 +42,7 @@ def init_db():
         )
     """)
 
-    # =========================
     # LOGS
-    # =========================
     cur.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,9 +55,7 @@ def init_db():
         )
     """)
 
-    # =========================
     # VISITORS
-    # =========================
     cur.execute("""
         CREATE TABLE IF NOT EXISTS visitors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,8 +75,8 @@ def init_db():
     admin = cur.fetchone()
     if not admin:
         cur.execute(
-            "INSERT INTO admins (username, password) VALUES (?, ?)",
-            ("admin", "1234")
+            "INSERT INTO admins (username, password, email) VALUES (?, ?, ?)",
+            ("admin", "1234", "admin@empresa.com")
         )
         conn.commit()
 
@@ -100,19 +98,28 @@ def admin_login(username: str, password: str):
     return dict(row) if row else None
 
 
-def create_admin(username: str, password: str):
+def create_admin(username: str, password: str, email: Optional[str] = None):
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("SELECT id FROM admins WHERE username = ?", (username,))
     exists = cur.fetchone()
     if exists:
-      conn.close()
-      raise Exception("Ese usuario administrador ya existe")
+        conn.close()
+        raise Exception("Ese usuario administrador ya existe")
+
+    email_value = (email or "").strip().lower() or None
+
+    if email_value:
+        cur.execute("SELECT id FROM admins WHERE lower(trim(email)) = ?", (email_value,))
+        email_exists = cur.fetchone()
+        if email_exists:
+            conn.close()
+            raise Exception("Ese correo ya está registrado")
 
     cur.execute(
-        "INSERT INTO admins (username, password) VALUES (?, ?)",
-        (username, password)
+        "INSERT INTO admins (username, password, email) VALUES (?, ?, ?)",
+        (username.strip(), password.strip(), email_value)
     )
     conn.commit()
 
@@ -140,6 +147,41 @@ def change_admin_password(username: str, current_password: str, new_password: st
     cur.execute(
         "UPDATE admins SET password = ? WHERE username = ?",
         (new_password, username)
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+def get_admin_by_email(email: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM admins WHERE lower(trim(email)) = lower(trim(?))",
+        (email,)
+    )
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def reset_admin_password_by_email(email: str, new_password: str):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT * FROM admins WHERE lower(trim(email)) = lower(trim(?))",
+        (email,)
+    )
+    admin = cur.fetchone()
+
+    if not admin:
+        conn.close()
+        raise Exception("No existe un administrador con ese correo")
+
+    cur.execute(
+        "UPDATE admins SET password = ? WHERE lower(trim(email)) = lower(trim(?))",
+        (new_password, email)
     )
     conn.commit()
     conn.close()
