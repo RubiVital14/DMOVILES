@@ -14,7 +14,7 @@ import {
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { fetchWorkers, createLog, sendOtp, verifyOtp } from "../services/api";
 
-const getWorkerId = (w) => Number(w?.id ?? w?.worker_id ?? w?.employee_no);
+const getWorkerId = (w) => Number(w?.id ?? w?.worker_id ?? 0);
 
 export default function WorkerScanScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -38,11 +38,12 @@ export default function WorkerScanScreen({ navigation }) {
   const [emailInput, setEmailInput] = useState("");
   const [otpWorker, setOtpWorker] = useState(null);
   const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [resendingOtp, setResendingOtp] = useState(false);
 
-  const recognizedWorker = useMemo(() => {
-    if (!workers.length) return null;
-    return workers[0];
-  }, [workers]);
+  const actionLabel = useMemo(() => {
+    return mode === "IN" ? "Entrada" : "Salida";
+  }, [mode]);
 
   const detectedWorkerByEmail = useMemo(() => {
     const email = emailInput.trim().toLowerCase();
@@ -104,14 +105,15 @@ export default function WorkerScanScreen({ navigation }) {
 
   const registerLogForWorker = async (worker, action, method) => {
     await createLog({
-      worker_id: getWorkerId(worker),
+      full_name: worker.full_name,
+      employee_no: worker.employee_no,
+      area: worker.area,
       action,
-      log_type: "worker",
       method,
     });
   };
 
-  // Demo temporal de reconocimiento
+  // Demo temporal de reconocimiento facial
   const recognizeWorkerFromPhoto = async () => {
     if (!workers.length) {
       throw new Error("No hay trabajadores registrados");
@@ -143,8 +145,8 @@ export default function WorkerScanScreen({ navigation }) {
 
       const worker = await recognizeWorkerFromPhoto();
 
-      await registerLogForWorker(worker, mode, "Rostro");
-      showSuccess(mode, worker);
+      await registerLogForWorker(worker, actionLabel, "Rostro");
+      showSuccess(actionLabel, worker);
     } catch (e) {
       Alert.alert("Error", e?.message || "No se pudo reconocer al trabajador");
     } finally {
@@ -178,7 +180,7 @@ export default function WorkerScanScreen({ navigation }) {
 
       await sendOtp({
         worker_id: getWorkerId(worker),
-        action: mode,
+        action: actionLabel,
       });
 
       setOtpWorker(worker);
@@ -187,27 +189,6 @@ export default function WorkerScanScreen({ navigation }) {
       setShowOtpModal(true);
     } catch (e) {
       Alert.alert("Error", e?.message || "No se pudo enviar el código");
-    } finally {
-      setSendingOtp(false);
-    }
-  };
-
-  const handleResendOtp = async () => {
-    try {
-      setSendingOtp(true);
-
-      const worker = findWorkerByEmail();
-
-      await sendOtp({
-        worker_id: getWorkerId(worker),
-        action: mode,
-      });
-
-      setOtpWorker(worker);
-      setOtpInfo(`Código reenviado a ${worker.email}`);
-      Alert.alert("Listo", "Se reenvió el código");
-    } catch (e) {
-      Alert.alert("Error", e?.message || "No se pudo reenviar el código");
     } finally {
       setSendingOtp(false);
     }
@@ -225,22 +206,58 @@ export default function WorkerScanScreen({ navigation }) {
         return;
       }
 
+      setVerifyingOtp(true);
+
       await verifyOtp({
         worker_id: getWorkerId(otpWorker),
-        action: mode,
+        action: actionLabel,
         code: otpCode.trim(),
       });
+
+      const worker = otpWorker;
 
       setShowOtpModal(false);
       setOtpCode("");
       setOtpInfo("");
       setEmailInput("");
-
-      showSuccess(mode, otpWorker);
       setOtpWorker(null);
+
+      showSuccess(actionLabel, worker);
     } catch (e) {
       Alert.alert("Error", e?.message || "Código incorrecto");
+    } finally {
+      setVerifyingOtp(false);
     }
+  };
+
+  const handleResendOtp = async () => {
+    try {
+      if (!otpWorker) {
+        Alert.alert("Error", "Primero envía el código");
+        return;
+      }
+
+      setResendingOtp(true);
+
+      await sendOtp({
+        worker_id: getWorkerId(otpWorker),
+        action: actionLabel,
+      });
+
+      setOtpInfo(`Código reenviado a ${otpWorker.email}`);
+      Alert.alert("Correcto", "Se reenvió el código al correo");
+    } catch (e) {
+      Alert.alert("Error", e?.message || "No se pudo reenviar el código");
+    } finally {
+      setResendingOtp(false);
+    }
+  };
+
+  const handleCancelOtp = () => {
+    setOtpCode("");
+    setOtpInfo("");
+    setOtpWorker(null);
+    setShowOtpModal(false);
   };
 
   return (
@@ -403,14 +420,6 @@ export default function WorkerScanScreen({ navigation }) {
                       {sendingOtp ? "Enviando..." : "Enviar Código"}
                     </Text>
                   </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.resendBtn}
-                    onPress={handleResendOtp}
-                    disabled={sendingOtp}
-                  >
-                    <Text style={styles.resendBtnText}>Reenviar código</Text>
-                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.infoBox}>
@@ -418,8 +427,8 @@ export default function WorkerScanScreen({ navigation }) {
                     {loadingWorkers
                       ? "Cargando empleados..."
                       : workers.length
-                      ? "Puedes usar el correo registrado de cualquier empleado"
-                      : "No hay trabajadores registrados"}
+                        ? "Puedes usar el correo registrado de cualquier empleado"
+                        : "No hay trabajadores registrados"}
                   </Text>
                 </View>
               </View>
@@ -429,18 +438,18 @@ export default function WorkerScanScreen({ navigation }) {
               <View
                 style={[
                   styles.successIconBox,
-                  successState.type === "IN"
+                  successState.type === "Entrada"
                     ? styles.successIconBoxIn
                     : styles.successIconBoxOut,
                 ]}
               >
                 <Text style={styles.successIcon}>
-                  {successState.type === "IN" ? "↪" : "↩"}
+                  {successState.type === "Entrada" ? "↪" : "↩"}
                 </Text>
               </View>
 
               <Text style={styles.successLabel}>
-                {successState.type === "IN" ? "BIENVENIDO" : "HASTA LUEGO"}
+                {successState.type === "Entrada" ? "BIENVENIDO" : "HASTA LUEGO"}
               </Text>
 
               <Text style={[styles.successName, isTablet && styles.successNameTablet]}>
@@ -454,12 +463,12 @@ export default function WorkerScanScreen({ navigation }) {
               <Text
                 style={[
                   styles.successStatus,
-                  successState.type === "IN"
+                  successState.type === "Entrada"
                     ? styles.successStatusIn
                     : styles.successStatusOut,
                 ]}
               >
-                {successState.type === "IN"
+                {successState.type === "Entrada"
                   ? "Entrada registrada"
                   : "Salida registrada"}
               </Text>
@@ -493,23 +502,32 @@ export default function WorkerScanScreen({ navigation }) {
               onChangeText={setOtpCode}
             />
 
-            <View style={styles.modalBtnRow}>
+            <View style={styles.otpButtons}>
               <TouchableOpacity
-                style={[styles.modalBtn, styles.cancelBtn]}
-                onPress={() => {
-                  setShowOtpModal(false);
-                  setOtpCode("");
-                  setOtpInfo("");
-                }}
+                style={styles.otpVerifyBtn}
+                onPress={handleVerifyOtp}
+                disabled={verifyingOtp}
               >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
+                <Text style={styles.otpVerifyText}>
+                  {verifyingOtp ? "Verificando..." : "Verificar código"}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalBtn, styles.confirmBtn]}
-                onPress={handleVerifyOtp}
+                style={styles.otpResendBtn}
+                onPress={handleResendOtp}
+                disabled={resendingOtp}
               >
-                <Text style={styles.confirmBtnText}>Verificar código</Text>
+                <Text style={styles.otpResendText}>
+                  {resendingOtp ? "Reenviando..." : "Reenviar código"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.otpCancelBtn}
+                onPress={handleCancelOtp}
+              >
+                <Text style={styles.otpCancelText}>Cancelar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -869,20 +887,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  resendBtn: {
-    width: "100%",
-    backgroundColor: "#111827",
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-
-  resendBtnText: {
-    color: "#dbe8ff",
-    fontWeight: "700",
-    fontSize: 15,
-  },
-
   infoBox: {
     marginTop: 14,
     paddingVertical: 10,
@@ -1045,36 +1049,52 @@ const styles = StyleSheet.create({
     letterSpacing: 4,
   },
 
-  modalBtnRow: {
-    flexDirection: "row",
-    gap: 10,
+  otpButtons: {
+    marginTop: 24,
     width: "100%",
+    alignItems: "center",
+    gap: 12,
   },
 
-  modalBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+  otpVerifyBtn: {
+    width: "85%",
+    backgroundColor: "#f59e0b",
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: "center",
   },
 
-  cancelBtn: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-
-  cancelBtnText: {
+  otpVerifyText: {
     color: "#fff",
+    fontSize: 17,
     fontWeight: "700",
   },
 
-  confirmBtn: {
-    backgroundColor: "#f59e0b",
+  otpResendBtn: {
+    width: "85%",
+    backgroundColor: "#2563eb",
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: "center",
   },
 
-  confirmBtnText: {
+  otpResendText: {
     color: "#fff",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+
+  otpCancelBtn: {
+    width: "85%",
+    backgroundColor: "#475569",
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+
+  otpCancelText: {
+    color: "#fff",
+    fontSize: 17,
     fontWeight: "700",
   },
 });

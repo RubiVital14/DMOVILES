@@ -26,9 +26,10 @@ import {
 
 export default function AdminHome({ navigation }) {
   const { width } = useWindowDimensions();
-  const isPhone = width < 700;
-  const isTablet = width >= 900;
-  const horizontalPadding = isTablet ? 28 : 16;
+
+  const isSmallPhone = width < 390;
+  const isPhone = width < 760;
+  const isTablet = width >= 1000;
 
   const [workers, setWorkers] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -93,6 +94,22 @@ export default function AdminHome({ navigation }) {
     return ["Todos", ...Array.from(set)];
   }, [workers]);
 
+  const entradasHoy = logs.filter(
+    (l) =>
+      l.action === "Entrada" &&
+      String(l.created_at || "").slice(0, 10) === today
+  ).length;
+
+  const salidasHoy = logs.filter(
+    (l) =>
+      l.action === "Salida" &&
+      String(l.created_at || "").slice(0, 10) === today
+  ).length;
+
+  const visitantesHoy = visitors.filter(
+    (v) => String(v.created_at || "").slice(0, 10) === today
+  ).length;
+
   const filteredLogs = useMemo(() => {
     return logs.filter((l) => {
       const q = search.trim().toLowerCase();
@@ -101,7 +118,8 @@ export default function AdminHome({ navigation }) {
         !q ||
         String(l.full_name || "").toLowerCase().includes(q) ||
         String(l.employee_no || "").toLowerCase().includes(q) ||
-        String(l.area || "").toLowerCase().includes(q);
+        String(l.area || "").toLowerCase().includes(q) ||
+        String(l.method || "").toLowerCase().includes(q);
 
       const matchesType =
         filterType === "Todos" || String(l.action || "") === filterType;
@@ -110,11 +128,16 @@ export default function AdminHome({ navigation }) {
         filterDept === "Todos" || String(l.area || "") === filterDept;
 
       const logDate = String(l.created_at || "").slice(0, 10);
-
       const matchesFrom = !dateFrom || logDate >= dateFrom;
       const matchesTo = !dateTo || logDate <= dateTo;
 
-      return matchesSearch && matchesType && matchesDept && matchesFrom && matchesTo;
+      return (
+        matchesSearch &&
+        matchesType &&
+        matchesDept &&
+        matchesFrom &&
+        matchesTo
+      );
     });
   }, [logs, search, filterType, filterDept, dateFrom, dateTo]);
 
@@ -146,33 +169,17 @@ export default function AdminHome({ navigation }) {
     });
   }, [visitors, search]);
 
-  const entradasHoy = logs.filter(
-    (l) =>
-      l.action === "Entrada" &&
-      String(l.created_at || "").slice(0, 10) === today
-  ).length;
-
-  const salidasHoy = logs.filter(
-    (l) =>
-      l.action === "Salida" &&
-      String(l.created_at || "").slice(0, 10) === today
-  ).length;
-
-  const visitantesHoy = visitors.filter(
-    (v) => String(v.created_at || "").slice(0, 10) === today
-  ).length;
-
   const handleCreateWorker = async () => {
     try {
-      if (!name.trim() || !area.trim()) {
-        Alert.alert("Error", "Completa nombre y departamento");
+      if (!name.trim() || !area.trim() || !email.trim()) {
+        Alert.alert("Error", "Completa nombre, departamento y correo");
         return;
       }
 
       await createWorker({
         full_name: name.trim(),
         area: area.trim(),
-        email: email.trim() || null,
+        email: email.trim().toLowerCase(),
         face_key: null,
       });
 
@@ -210,7 +217,11 @@ export default function AdminHome({ navigation }) {
 
   const handleChangePassword = async () => {
     try {
-      if (!passwordUsername.trim() || !currentPassword.trim() || !newPassword.trim()) {
+      if (
+        !passwordUsername.trim() ||
+        !currentPassword.trim() ||
+        !newPassword.trim()
+      ) {
         Alert.alert("Error", "Completa todos los campos");
         return;
       }
@@ -241,15 +252,15 @@ export default function AdminHome({ navigation }) {
 
   const handleUpdateWorker = async () => {
     try {
-      if (!editName.trim() || !editArea.trim()) {
-        Alert.alert("Error", "Completa nombre y departamento");
+      if (!editName.trim() || !editArea.trim() || !editEmail.trim()) {
+        Alert.alert("Error", "Completa nombre, departamento y correo");
         return;
       }
 
       await updateWorker(editWorkerId, {
         full_name: editName.trim(),
         area: editArea.trim(),
-        email: editEmail.trim() || null,
+        email: editEmail.trim().toLowerCase(),
         face_key: null,
       });
 
@@ -302,6 +313,22 @@ export default function AdminHome({ navigation }) {
     ]);
   };
 
+  const cycleType = () => {
+    const next =
+      filterType === "Todos"
+        ? "Entrada"
+        : filterType === "Entrada"
+        ? "Salida"
+        : "Todos";
+    setFilterType(next);
+  };
+
+  const cycleDept = () => {
+    const idx = departamentos.indexOf(filterDept);
+    const next = departamentos[(idx + 1) % departamentos.length];
+    setFilterDept(next);
+  };
+
   return (
     <View style={styles.screen}>
       <View style={styles.bgGlowOne} />
@@ -310,17 +337,21 @@ export default function AdminHome({ navigation }) {
       <ScrollView
         contentContainerStyle={[
           styles.container,
-          { paddingHorizontal: horizontalPadding },
+          isTablet ? styles.containerTablet : styles.containerPhone,
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.title}>Panel de Administración</Text>
+        <View style={[styles.headerRow, isPhone && styles.headerRowPhone]}>
+          <View style={styles.headerLeft}>
+            <Text style={[styles.title, isSmallPhone && styles.titleSmall]}>
+              Panel de Administración
+            </Text>
             <Text style={styles.subtitle}>Control de acceso y asistencia</Text>
           </View>
 
-          <View style={styles.headerActions}>
+          <View
+            style={[styles.headerActions, isPhone && styles.headerActionsPhone]}
+          >
             <TouchableOpacity
               style={styles.headerGhostBtn}
               onPress={() => setShowAdminForm(true)}
@@ -335,7 +366,10 @@ export default function AdminHome({ navigation }) {
               <Text style={styles.headerGhostText}>Cambiar contraseña</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.headerGhostBtn} onPress={handleLogout}>
+            <TouchableOpacity
+              style={styles.headerGhostBtn}
+              onPress={handleLogout}
+            >
               <Text style={styles.headerGhostText}>Cerrar sesión</Text>
             </TouchableOpacity>
           </View>
@@ -345,125 +379,177 @@ export default function AdminHome({ navigation }) {
           <KpiCard label="ENTRADAS HOY" value={entradasHoy} accent="#10b981" />
           <KpiCard label="SALIDAS HOY" value={salidasHoy} accent="#f59e0b" />
           <KpiCard label="EMPLEADOS" value={workers.length} accent="#7c3aed" />
-          <KpiCard label="VISITANTES HOY" value={visitantesHoy} accent="#0ea5e9" />
+          <KpiCard
+            label="VISITANTES HOY"
+            value={visitantesHoy}
+            accent="#0ea5e9"
+          />
         </View>
 
         <View style={styles.tabsRow}>
-          <Tab label="Asistencia" active={activeTab === "asistencia"} onPress={() => setActiveTab("asistencia")} />
-          <Tab label="Visitantes" active={activeTab === "visitantes"} onPress={() => setActiveTab("visitantes")} />
-          <Tab label="Empleados" active={activeTab === "empleados"} onPress={() => setActiveTab("empleados")} />
+          <Tab
+            label="Asistencia"
+            active={activeTab === "asistencia"}
+            onPress={() => setActiveTab("asistencia")}
+          />
+          <Tab
+            label="Visitantes"
+            active={activeTab === "visitantes"}
+            onPress={() => setActiveTab("visitantes")}
+          />
+          <Tab
+            label="Empleados"
+            active={activeTab === "empleados"}
+            onPress={() => setActiveTab("empleados")}
+          />
         </View>
 
         {activeTab === "asistencia" && (
           <>
-            <View style={styles.filtersWrap}>
+            <View style={[styles.filtersWrap, isPhone && styles.filtersWrapPhone]}>
               <TextInput
-                style={styles.search}
+                style={[styles.search, isPhone && styles.fullWidth]}
                 placeholder="Buscar por nombre o número..."
                 placeholderTextColor="#8ea0c0"
                 value={search}
                 onChangeText={setSearch}
               />
 
-              <View style={styles.selectMock}>
-                <Text style={styles.selectText}>{filterType}</Text>
-              </View>
-
-              <View style={styles.selectMock}>
-                <Text style={styles.selectText}>{filterDept}</Text>
-              </View>
-
               <TouchableOpacity
-                style={styles.selectMock}
-                onPress={() => {
-                  const next = filterType === "Todos"
-                    ? "Entrada"
-                    : filterType === "Entrada"
-                    ? "Salida"
-                    : "Todos";
-                  setFilterType(next);
-                }}
+                style={[styles.selectMock, isPhone && styles.halfWidth]}
+                onPress={cycleType}
               >
                 <Text style={styles.selectText}>{filterType}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.selectMock}
-                onPress={() => {
-                  const idx = departamentos.indexOf(filterDept);
-                  const next = departamentos[(idx + 1) % departamentos.length];
-                  setFilterDept(next);
-                }}
+                style={[styles.selectMock, isPhone && styles.halfWidth]}
+                onPress={cycleDept}
               >
                 <Text style={styles.selectText}>{filterDept}</Text>
               </TouchableOpacity>
 
               <TextInput
-                style={styles.dateInput}
+                style={[styles.dateInput, isPhone && styles.halfWidth]}
                 placeholder="2026-03-01"
                 placeholderTextColor="#8ea0c0"
                 value={dateFrom}
                 onChangeText={setDateFrom}
               />
+
               <TextInput
-                style={styles.dateInput}
+                style={[styles.dateInput, isPhone && styles.halfWidth]}
                 placeholder="2026-03-10"
                 placeholderTextColor="#8ea0c0"
                 value={dateTo}
                 onChangeText={setDateTo}
               />
 
-              <TouchableOpacity style={styles.excelBtn} onPress={descargarExcel}>
+              <TouchableOpacity
+                style={[styles.excelBtn, isPhone && styles.fullWidth]}
+                onPress={descargarExcel}
+              >
                 <Text style={styles.excelText}>Descargar Excel</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.tableShell}>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.headerCell, { flex: 1.4 }]}>Empleado</Text>
-                <Text style={[styles.headerCell, { flex: 1.1 }]}>No. Empleado</Text>
-                <Text style={[styles.headerCell, { flex: 1.3 }]}>Departamento</Text>
-                <Text style={[styles.headerCell, { flex: 1 }]}>Tipo</Text>
-                <Text style={[styles.headerCell, { flex: 1 }]}>Método</Text>
-                <Text style={[styles.headerCell, { flex: 1.6 }]}>Fecha y Hora</Text>
-              </View>
+            {!isPhone ? (
+              <View style={styles.tableShell}>
+                <View style={styles.tableHeader}>
+                  <Text style={[styles.headerCell, { flex: 1.4 }]}>
+                    Empleado
+                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.1 }]}>
+                    No. Empleado
+                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.3 }]}>
+                    Departamento
+                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1 }]}>Tipo</Text>
+                  <Text style={[styles.headerCell, { flex: 1 }]}>Método</Text>
+                  <Text style={[styles.headerCell, { flex: 1.6 }]}>
+                    Fecha y Hora
+                  </Text>
+                </View>
 
-              <View style={styles.tableCard}>
+                <View style={styles.tableCard}>
+                  {filteredLogs.map((l) => (
+                    <View key={l.id} style={styles.workerRow}>
+                      <View style={[styles.cell, { flex: 1.4 }]}>
+                        <Text style={styles.workerName}>{l.full_name}</Text>
+                      </View>
+                      <View style={[styles.cell, { flex: 1.1 }]}>
+                        <Text style={styles.workerMeta}>{l.employee_no}</Text>
+                      </View>
+                      <View style={[styles.cell, { flex: 1.3 }]}>
+                        <Text style={styles.workerMeta}>{l.area}</Text>
+                      </View>
+                      <View style={[styles.cell, { flex: 1 }]}>
+                        <View
+                          style={
+                            l.action === "Entrada"
+                              ? styles.entryBadge
+                              : styles.exitBadge
+                          }
+                        >
+                          <Text style={styles.badgeText}>{l.action}</Text>
+                        </View>
+                      </View>
+                      <View style={[styles.cell, { flex: 1 }]}>
+                        <View style={styles.methodBadge}>
+                          <Text style={styles.badgeText}>
+                            {l.method || "Rostro"}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={[styles.cell, { flex: 1.6 }]}>
+                        <Text style={styles.workerMeta}>{l.created_at}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <View style={styles.mobileList}>
                 {filteredLogs.map((l) => (
-                  <View key={l.id} style={styles.workerRow}>
-                    <View style={[styles.cell, { flex: 1.4 }]}>
-                      <Text style={styles.workerName}>{l.full_name}</Text>
-                    </View>
-                    <View style={[styles.cell, { flex: 1.1 }]}>
-                      <Text style={styles.workerMeta}>{l.employee_no}</Text>
-                    </View>
-                    <View style={[styles.cell, { flex: 1.3 }]}>
-                      <Text style={styles.workerMeta}>{l.area}</Text>
-                    </View>
-                    <View style={[styles.cell, { flex: 1 }]}>
-                      <View style={l.action === "Entrada" ? styles.entryBadge : styles.exitBadge}>
+                  <View key={l.id} style={styles.mobileCard}>
+                    <Text style={styles.workerName}>{l.full_name}</Text>
+                    <Text style={styles.workerMeta}>
+                      Empleado #{l.employee_no}
+                    </Text>
+                    <Text style={styles.workerMeta}>{l.area}</Text>
+                    <Text style={styles.workerMeta}>{l.created_at}</Text>
+
+                    <View style={styles.mobileBadgesRow}>
+                      <View
+                        style={
+                          l.action === "Entrada"
+                            ? styles.entryBadge
+                            : styles.exitBadge
+                        }
+                      >
                         <Text style={styles.badgeText}>{l.action}</Text>
                       </View>
-                    </View>
-                    <View style={[styles.cell, { flex: 1 }]}>
                       <View style={styles.methodBadge}>
-                        <Text style={styles.badgeText}>{l.method || "Rostro"}</Text>
+                        <Text style={styles.badgeText}>
+                          {l.method || "Rostro"}
+                        </Text>
                       </View>
-                    </View>
-                    <View style={[styles.cell, { flex: 1.6 }]}>
-                      <Text style={styles.workerMeta}>{l.created_at}</Text>
                     </View>
                   </View>
                 ))}
               </View>
-            </View>
+            )}
           </>
         )}
 
         {activeTab === "empleados" && (
           <>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Empleados ({filteredWorkers.length})</Text>
+              <Text style={styles.sectionTitle}>
+                Empleados ({filteredWorkers.length})
+              </Text>
+
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={() => setShowWorkerForm(!showWorkerForm)}
@@ -474,91 +560,193 @@ export default function AdminHome({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {showWorkerForm && (
-              <View style={styles.formCard}>
-                <Text style={styles.label}>Nombre completo</Text>
-                <TextInput
-                  style={styles.input}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Nombre completo"
-                  placeholderTextColor="#8ea0c0"
-                />
+            <TextInput
+              style={[styles.search, styles.sectionSearch]}
+              placeholder="Buscar por nombre o número..."
+              placeholderTextColor="#8ea0c0"
+              value={search}
+              onChangeText={setSearch}
+            />
 
-                <Text style={styles.label}>Departamento</Text>
-                <TextInput
-                  style={styles.input}
-                  value={area}
-                  onChangeText={setArea}
-                  placeholder="Departamento"
-                  placeholderTextColor="#8ea0c0"
-                />
+            <Modal visible={showWorkerForm} transparent animationType="fade">
+  <View style={styles.modalOverlay}>
+    <View style={styles.workerModalCard}>
+      <ScrollView
+        contentContainerStyle={styles.workerModalContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.modalTitle}>Nuevo Empleado</Text>
 
-                <Text style={styles.label}>Correo</Text>
-                <TextInput
-                  style={styles.input}
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="correo@empresa.com"
-                  placeholderTextColor="#8ea0c0"
-                />
+        <View style={styles.captureCardModal}>
+          <View style={styles.capturePreview}>
+            <Text style={styles.captureIcon}>📷</Text>
+          </View>
 
-                <View style={styles.formActions}>
-                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowWorkerForm(false)}>
-                    <Text style={styles.cancelBtnText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.primaryBtnSmall} onPress={handleCreateWorker}>
-                    <Text style={styles.primaryBtnText}>Crear Empleado</Text>
-                  </TouchableOpacity>
+          <TouchableOpacity>
+            <Text style={styles.captureText}>Capturar cara</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.captureWarn}>
+            Requerida para reconocimiento
+          </Text>
+        </View>
+
+        <Text style={styles.label}>Nombre completo *</Text>
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          placeholder="Nombre completo"
+          placeholderTextColor="#8ea0c0"
+        />
+
+        <Text style={styles.label}>No. Empleado *</Text>
+        <View style={styles.readonlyBox}>
+          <Text style={styles.readonlyText}>
+            Se asigna automáticamente
+          </Text>
+        </View>
+
+        <Text style={styles.label}>Departamento *</Text>
+        <TextInput
+          style={styles.input}
+          value={area}
+          onChangeText={setArea}
+          placeholder="Departamento"
+          placeholderTextColor="#8ea0c0"
+        />
+
+        <Text style={styles.label}>Correo electrónico *</Text>
+        <TextInput
+          style={styles.input}
+          value={email}
+          onChangeText={setEmail}
+          placeholder="correo@empresa.com"
+          placeholderTextColor="#8ea0c0"
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
+
+        <View style={styles.formActions}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => {
+              setShowWorkerForm(false);
+              setName("");
+              setArea("");
+              setEmail("");
+            }}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.primaryBtnSmall}
+            onPress={handleCreateWorker}
+          >
+            <Text style={styles.primaryBtnText}>Guardar Empleado</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
+  </View>
+</Modal>
+
+            {!isPhone ? (
+              <View style={styles.tableShell}>
+                <View style={styles.tableHeader}>
+                  <Text style={[styles.headerCell, { flex: 0.8 }]}>Foto</Text>
+                  <Text style={[styles.headerCell, { flex: 1.5 }]}>Nombre</Text>
+                  <Text style={[styles.headerCell, { flex: 1.2 }]}>
+                    No. Empleado
+                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.5 }]}>
+                    Departamento
+                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.7 }]}>
+                    Correo
+                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1 }]}>Estado</Text>
+                  <Text style={[styles.headerCell, { flex: 1 }]}>Acciones</Text>
+                </View>
+
+                <View style={styles.tableCard}>
+                  {filteredWorkers.map((w) => (
+                    <View key={w.id} style={styles.workerRow}>
+                      <View style={[styles.cell, { flex: 0.8 }]}>
+                        <View style={styles.avatarCircle}>
+                          <Text style={styles.avatarLetter}>
+                            {String(w.full_name || "?")
+                              .charAt(0)
+                              .toUpperCase()}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1.5 }]}>
+                        <Text style={styles.workerName}>{w.full_name}</Text>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1.2 }]}>
+                        <Text style={styles.workerMeta}>{w.employee_no}</Text>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1.5 }]}>
+                        <Text style={styles.workerMeta}>{w.area}</Text>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1.7 }]}>
+                        <Text style={styles.workerMeta}>{w.email || "-"}</Text>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1 }]}>
+                        <View style={styles.activeBadge}>
+                          <Text style={styles.activeBadgeText}>Activo</Text>
+                        </View>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1 }]}>
+                        <View style={styles.actionsRow}>
+                          <TouchableOpacity onPress={() => openEditModal(w)}>
+                            <Text style={styles.editText}>✎</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => handleDeleteWorker(w)}>
+                            <Text style={styles.deleteText}>🗑</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
                 </View>
               </View>
-            )}
-
-            <View style={styles.tableShell}>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.headerCell, { flex: 0.8 }]}>Foto</Text>
-                <Text style={[styles.headerCell, { flex: 1.5 }]}>Nombre</Text>
-                <Text style={[styles.headerCell, { flex: 1.2 }]}>No. Empleado</Text>
-                <Text style={[styles.headerCell, { flex: 1.5 }]}>Departamento</Text>
-                <Text style={[styles.headerCell, { flex: 1.7 }]}>Correo</Text>
-                <Text style={[styles.headerCell, { flex: 1 }]}>Estado</Text>
-                <Text style={[styles.headerCell, { flex: 1 }]}>Acciones</Text>
-              </View>
-
-              <View style={styles.tableCard}>
+            ) : (
+              <View style={styles.mobileList}>
                 {filteredWorkers.map((w) => (
-                  <View key={w.id} style={styles.workerRow}>
-                    <View style={[styles.cell, { flex: 0.8 }]}>
+                  <View key={w.id} style={styles.mobileCard}>
+                    <View style={styles.mobileCardTop}>
                       <View style={styles.avatarCircle}>
                         <Text style={styles.avatarLetter}>
-                          {String(w.full_name || "?").charAt(0).toUpperCase()}
+                          {String(w.full_name || "?")
+                            .charAt(0)
+                            .toUpperCase()}
                         </Text>
+                      </View>
+
+                      <View style={styles.mobileInfo}>
+                        <Text style={styles.workerName}>{w.full_name}</Text>
+                        <Text style={styles.workerMeta}>
+                          Empleado #{w.employee_no}
+                        </Text>
+                        <Text style={styles.workerMeta}>{w.area}</Text>
+                        <Text style={styles.workerMeta}>{w.email || "-"}</Text>
                       </View>
                     </View>
 
-                    <View style={[styles.cell, { flex: 1.5 }]}>
-                      <Text style={styles.workerName}>{w.full_name}</Text>
-                    </View>
-
-                    <View style={[styles.cell, { flex: 1.2 }]}>
-                      <Text style={styles.workerMeta}>{w.employee_no}</Text>
-                    </View>
-
-                    <View style={[styles.cell, { flex: 1.5 }]}>
-                      <Text style={styles.workerMeta}>{w.area}</Text>
-                    </View>
-
-                    <View style={[styles.cell, { flex: 1.7 }]}>
-                      <Text style={styles.workerMeta}>{w.email || "-"}</Text>
-                    </View>
-
-                    <View style={[styles.cell, { flex: 1 }]}>
+                    <View style={styles.mobileFooter}>
                       <View style={styles.activeBadge}>
                         <Text style={styles.activeBadgeText}>Activo</Text>
                       </View>
-                    </View>
 
-                    <View style={[styles.cell, { flex: 1 }]}>
                       <View style={styles.actionsRow}>
                         <TouchableOpacity onPress={() => openEditModal(w)}>
                           <Text style={styles.editText}>✎</Text>
@@ -571,62 +759,110 @@ export default function AdminHome({ navigation }) {
                   </View>
                 ))}
               </View>
-            </View>
+            )}
           </>
         )}
 
         {activeTab === "visitantes" && (
           <>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Visitantes ({filteredVisitors.length})</Text>
+              <Text style={styles.sectionTitle}>
+                Visitantes ({filteredVisitors.length})
+              </Text>
             </View>
 
-            <View style={styles.tableShell}>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.headerCell, { flex: 0.8 }]}>Foto</Text>
-                <Text style={[styles.headerCell, { flex: 1.5 }]}>Nombre</Text>
-                <Text style={[styles.headerCell, { flex: 1.4 }]}>Empresa</Text>
-                <Text style={[styles.headerCell, { flex: 1.1 }]}>Teléfono</Text>
-                <Text style={[styles.headerCell, { flex: 1.5 }]}>Motivo</Text>
-                <Text style={[styles.headerCell, { flex: 1.5 }]}>Fecha</Text>
-              </View>
+            <TextInput
+              style={[styles.search, styles.sectionSearch]}
+              placeholder="Buscar visitante..."
+              placeholderTextColor="#8ea0c0"
+              value={search}
+              onChangeText={setSearch}
+            />
 
-              <View style={styles.tableCard}>
+            {!isPhone ? (
+              <View style={styles.tableShell}>
+                <View style={styles.tableHeader}>
+                  <Text style={[styles.headerCell, { flex: 0.8 }]}>Foto</Text>
+                  <Text style={[styles.headerCell, { flex: 1.5 }]}>Nombre</Text>
+                  <Text style={[styles.headerCell, { flex: 1.4 }]}>
+                    Empresa
+                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.1 }]}>
+                    Teléfono
+                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.5 }]}>Motivo</Text>
+                  <Text style={[styles.headerCell, { flex: 1.5 }]}>Fecha</Text>
+                </View>
+
+                <View style={styles.tableCard}>
+                  {filteredVisitors.map((v) => (
+                    <View key={v.id} style={styles.workerRow}>
+                      <View style={[styles.cell, { flex: 0.8 }]}>
+                        {v.photo_uri ? (
+                          <Image
+                            source={{ uri: v.photo_uri }}
+                            style={styles.visitorThumb}
+                          />
+                        ) : (
+                          <View style={styles.avatarCircle}>
+                            <Text style={styles.avatarLetter}>V</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1.5 }]}>
+                        <Text style={styles.workerName}>{v.full_name}</Text>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1.4 }]}>
+                        <Text style={styles.workerMeta}>{v.company || "-"}</Text>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1.1 }]}>
+                        <Text style={styles.workerMeta}>{v.phone || "-"}</Text>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1.5 }]}>
+                        <Text style={styles.workerMeta}>{v.reason || "-"}</Text>
+                      </View>
+
+                      <View style={[styles.cell, { flex: 1.5 }]}>
+                        <Text style={styles.workerMeta}>{v.created_at || "-"}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <View style={styles.mobileList}>
                 {filteredVisitors.map((v) => (
-                  <View key={v.id} style={styles.workerRow}>
-                    <View style={[styles.cell, { flex: 0.8 }]}>
+                  <View key={v.id} style={styles.mobileCard}>
+                    <View style={styles.mobileCardTop}>
                       {v.photo_uri ? (
-                        <Image source={{ uri: v.photo_uri }} style={styles.visitorThumb} />
+                        <Image
+                          source={{ uri: v.photo_uri }}
+                          style={styles.visitorThumbMobile}
+                        />
                       ) : (
                         <View style={styles.avatarCircle}>
                           <Text style={styles.avatarLetter}>V</Text>
                         </View>
                       )}
-                    </View>
 
-                    <View style={[styles.cell, { flex: 1.5 }]}>
-                      <Text style={styles.workerName}>{v.full_name}</Text>
-                    </View>
-
-                    <View style={[styles.cell, { flex: 1.4 }]}>
-                      <Text style={styles.workerMeta}>{v.company || "-"}</Text>
-                    </View>
-
-                    <View style={[styles.cell, { flex: 1.1 }]}>
-                      <Text style={styles.workerMeta}>{v.phone || "-"}</Text>
-                    </View>
-
-                    <View style={[styles.cell, { flex: 1.5 }]}>
-                      <Text style={styles.workerMeta}>{v.reason || "-"}</Text>
-                    </View>
-
-                    <View style={[styles.cell, { flex: 1.5 }]}>
-                      <Text style={styles.workerMeta}>{v.created_at || "-"}</Text>
+                      <View style={styles.mobileInfo}>
+                        <Text style={styles.workerName}>{v.full_name}</Text>
+                        <Text style={styles.workerMeta}>{v.company || "-"}</Text>
+                        <Text style={styles.workerMeta}>{v.phone || "-"}</Text>
+                        <Text style={styles.workerMeta}>{v.reason || "-"}</Text>
+                        <Text style={styles.workerMeta}>
+                          {v.created_at || "-"}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 ))}
               </View>
-            </View>
+            )}
           </>
         )}
       </ScrollView>
@@ -661,6 +897,8 @@ export default function AdminHome({ navigation }) {
               onChangeText={setEditEmail}
               placeholder="correo@empresa.com"
               placeholderTextColor="#8ea0c0"
+              autoCapitalize="none"
+              keyboardType="email-address"
             />
 
             <View style={styles.formActions}>
@@ -675,7 +913,7 @@ export default function AdminHome({ navigation }) {
                 style={styles.primaryBtnSmall}
                 onPress={handleUpdateWorker}
               >
-                <Text style={styles.primaryBtnText}>Guardar cambios</Text>
+                <Text style={styles.primaryBtnText}>Actualizar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -797,18 +1035,26 @@ function KpiCard({ label, value, accent }) {
 
 function Tab({ label, active, onPress }) {
   return (
-    <TouchableOpacity style={[styles.tab, active && styles.tabActive]} onPress={onPress}>
-      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+    <TouchableOpacity
+      style={[styles.tab, active && styles.tabActive]}
+      onPress={onPress}
+    >
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#07111f" },
+  screen: {
+    flex: 1,
+    backgroundColor: "#07111f",
+  },
   bgGlowOne: {
     position: "absolute",
     top: 90,
-    left: 40,
+    left: 30,
     width: 220,
     height: 220,
     borderRadius: 180,
@@ -817,42 +1063,96 @@ const styles = StyleSheet.create({
   bgGlowTwo: {
     position: "absolute",
     bottom: 120,
-    right: 30,
-    width: 220,
-    height: 220,
-    borderRadius: 160,
+    right: 20,
+    width: 240,
+    height: 240,
+    borderRadius: 180,
     backgroundColor: "rgba(124,58,237,0.10)",
   },
-  container: { paddingVertical: 24, paddingBottom: 50 },
+  container: {
+    paddingTop: 20,
+    paddingBottom: 48,
+  },
+  containerPhone: {
+    paddingHorizontal: 16,
+  },
+  containerTablet: {
+    paddingHorizontal: 28,
+  },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
+    gap: 16,
     flexWrap: "wrap",
     marginBottom: 18,
   },
-  title: { fontSize: 32, color: "#fff", fontWeight: "700" },
-  subtitle: { color: "#8ea0c0", marginTop: 4 },
-  headerActions: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
+  headerRowPhone: {
+    gap: 12,
+  },
+  headerLeft: {
+    flexShrink: 1,
+  },
+  title: {
+    fontSize: 30,
+    color: "#fff",
+    fontWeight: "800",
+  },
+  titleSmall: {
+    fontSize: 24,
+  },
+  subtitle: {
+    color: "#9fb2d9",
+    marginTop: 4,
+    fontSize: 15,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+  },
+  headerActionsPhone: {
+    width: "100%",
+  },
   headerGhostBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
-  headerGhostText: { color: "#b8c7e6", fontSize: 13, fontWeight: "600" },
-  kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: 14, marginBottom: 24 },
+  headerGhostText: {
+    color: "#d7e3fb",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  kpiRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+    marginBottom: 22,
+  },
   kpiCard: {
-    backgroundColor: "#0f1b34",
-    borderRadius: 16,
-    padding: 18,
-    minWidth: 170,
     flexGrow: 1,
+    minWidth: 160,
+    backgroundColor: "#0f1b34",
+    borderRadius: 18,
+    padding: 18,
   },
-  kpiLabel: { color: "#8ea0c0", fontSize: 12, marginBottom: 12 },
-  kpiBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  kpiValue: { color: "#fff", fontSize: 34, fontWeight: "800" },
+  kpiLabel: {
+    color: "#9fb2d9",
+    fontSize: 12,
+    marginBottom: 14,
+  },
+  kpiBottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  kpiValue: {
+    color: "#fff",
+    fontSize: 34,
+    fontWeight: "800",
+  },
   kpiIcon: {
     width: 34,
     height: 34,
@@ -860,17 +1160,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  kpiIconText: { color: "#fff", fontSize: 22, fontWeight: "900" },
-  tabsRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 20 },
+  kpiIconText: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  tabsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 18,
+  },
   tab: {
     paddingVertical: 11,
     paddingHorizontal: 16,
-    borderRadius: 11,
+    borderRadius: 12,
     backgroundColor: "#111827",
   },
-  tabActive: { backgroundColor: "#7c3aed" },
-  tabText: { color: "#9fb2d9", fontWeight: "700" },
-  tabTextActive: { color: "#fff" },
+  tabActive: {
+    backgroundColor: "#7c3aed",
+  },
+  tabText: {
+    color: "#9fb2d9",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  tabTextActive: {
+    color: "#fff",
+  },
   filtersWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -878,87 +1195,174 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     alignItems: "center",
   },
+  filtersWrapPhone: {
+    gap: 10,
+  },
+  fullWidth: {
+    width: "100%",
+    minWidth: "100%",
+  },
+  halfWidth: {
+    width: "48%",
+    minWidth: "48%",
+  },
   search: {
-    flex: 1,
+    flexGrow: 1,
     minWidth: 240,
     backgroundColor: "#111827",
-    padding: 13,
-    borderRadius: 10,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     color: "#fff",
+    fontSize: 15,
+  },
+  sectionSearch: {
+    marginBottom: 16,
   },
   selectMock: {
     minWidth: 120,
     backgroundColor: "#1b2943",
-    borderRadius: 10,
+    borderRadius: 12,
     paddingVertical: 13,
     paddingHorizontal: 14,
   },
-  selectText: { color: "#d6e1f6" },
+  selectText: {
+    color: "#d6e1f6",
+    fontSize: 14,
+  },
   dateInput: {
     minWidth: 130,
     backgroundColor: "#1b2943",
-    borderRadius: 10,
+    borderRadius: 12,
     paddingVertical: 13,
     paddingHorizontal: 14,
     color: "#fff",
+    fontSize: 14,
+  },
+  excelBtn: {
+    backgroundColor: "#111827",
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  excelText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
   },
   sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
     flexWrap: "wrap",
-    marginBottom: 16,
+    gap: 12,
+    marginBottom: 14,
   },
-  sectionTitle: { color: "#fff", fontSize: 28, fontWeight: "700" },
+  sectionTitle: {
+    color: "#fff",
+    fontSize: 28,
+    fontWeight: "700",
+  },
   primaryBtn: {
     backgroundColor: "#7c3aed",
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     borderRadius: 12,
   },
   primaryBtnSmall: {
     backgroundColor: "#7c3aed",
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     borderRadius: 12,
   },
-  primaryBtnText: { color: "#fff", fontWeight: "700" },
-  formCard: {
-    backgroundColor: "#16233b",
-    borderRadius: 18,
+  primaryBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  formCardBig: {
+    backgroundColor: "#1b2943",
+    borderRadius: 20,
     padding: 18,
     marginBottom: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
   },
-  formRow: { flexDirection: "row", gap: 18, flexWrap: "wrap" },
-  photoBox: {
-    width: 140,
-    minHeight: 150,
-    borderRadius: 16,
-    backgroundColor: "#25344f",
+  formCardRow: {
+    flexDirection: "row",
+    gap: 18,
+    alignItems: "flex-start",
+  },
+  formCardColumn: {
+    flexDirection: "column",
+  },
+  captureCard: {
+    width: 150,
+    alignItems: "flex-start",
+  },
+  capturePreview: {
+    width: 126,
+    height: 126,
+    borderRadius: 18,
+    backgroundColor: "#394866",
     alignItems: "center",
     justifyContent: "center",
-    padding: 12,
+    marginBottom: 10,
   },
-  photoIcon: { fontSize: 28, marginBottom: 8 },
-  photoText: { color: "#d9e3f9", fontWeight: "700" },
-  photoSubtext: { marginTop: 6, color: "#c9a84a", fontSize: 12, textAlign: "center" },
-  formInputs: { flex: 1, minWidth: 260 },
-  label: { color: "#c8d6f3", marginBottom: 6, marginTop: 8, fontWeight: "600" },
+  captureIcon: {
+    fontSize: 34,
+    opacity: 0.8,
+  },
+  captureText: {
+    color: "#b892ff",
+    fontWeight: "700",
+    fontSize: 14,
+    marginBottom: 6,
+  },
+  captureWarn: {
+    color: "#d9aa35",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  formInputsBig: {
+    flex: 1,
+    minWidth: 260,
+  },
+  label: {
+    color: "#c8d6f3",
+    marginBottom: 6,
+    marginTop: 8,
+    fontWeight: "600",
+    fontSize: 14,
+  },
   input: {
-    backgroundColor: "#2a3954",
-    borderRadius: 10,
+    backgroundColor: "#3b4a66",
+    borderRadius: 12,
     padding: 14,
     color: "#fff",
+    fontSize: 15,
   },
   readonlyBox: {
-    backgroundColor: "#2a3954",
-    borderRadius: 10,
+    backgroundColor: "#3b4a66",
+    borderRadius: 12,
     padding: 14,
   },
-  readonlyText: { color: "#8ea0c0" },
-  inlineRow: { flexDirection: "row", gap: 12, marginTop: 2, flexWrap: "wrap" },
-  inlineCol: { flex: 1, minWidth: 180 },
+  readonlyText: {
+    color: "#9fb2d9",
+    fontSize: 14,
+  },
+  inlineRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 2,
+  },
+  inlineColumn: {
+    flexDirection: "column",
+  },
+  inlineCol: {
+    flex: 1,
+    minWidth: 180,
+  },
   formActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -972,13 +1376,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 12,
   },
-  cancelBtnText: { color: "#fff", fontWeight: "700" },
-  tableShell: { gap: 8 },
-  tableHeader: { flexDirection: "row", paddingHorizontal: 14, paddingVertical: 10 },
-  headerCell: { color: "#8ea0c0", fontSize: 12, fontWeight: "700" },
+  cancelBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  tableShell: {
+    gap: 8,
+  },
+  tableHeader: {
+    flexDirection: "row",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  headerCell: {
+    color: "#8ea0c0",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   tableCard: {
     backgroundColor: "#0f1b34",
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: "hidden",
   },
   workerRow: {
@@ -990,18 +1408,30 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(255,255,255,0.05)",
     gap: 10,
   },
-  cell: { justifyContent: "center" },
+  cell: {
+    justifyContent: "center",
+  },
   avatarCircle: {
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: "#2f3e5b",
+    backgroundColor: "#3b4a66",
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarLetter: { color: "#d9e3f9", fontWeight: "800" },
-  workerName: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  workerMeta: { color: "#8ea0c0", fontSize: 14 },
+  avatarLetter: {
+    color: "#d9e3f9",
+    fontWeight: "800",
+  },
+  workerName: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  workerMeta: {
+    color: "#9fb2d9",
+    fontSize: 14,
+  },
   activeBadge: {
     backgroundColor: "rgba(16,185,129,0.18)",
     paddingVertical: 6,
@@ -1009,7 +1439,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignSelf: "flex-start",
   },
-  activeBadgeText: { color: "#34d399", fontWeight: "700", fontSize: 12 },
+  activeBadgeText: {
+    color: "#34d399",
+    fontWeight: "700",
+    fontSize: 12,
+  },
   entryBadge: {
     backgroundColor: "rgba(16,185,129,0.18)",
     paddingVertical: 6,
@@ -1031,18 +1465,62 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignSelf: "flex-start",
   },
-  badgeText: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  editText: { color: "#c2b3ff", fontSize: 18 },
-  deleteText: { color: "#ff8a8a", fontSize: 18 },
-  actionsRow: { flexDirection: "row", gap: 12 },
-  visitorThumb: { width: 42, height: 42, borderRadius: 12 },
-  excelBtn: {
-    backgroundColor: "#111827",
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+  badgeText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
   },
-  excelText: { color: "#fff", fontWeight: "700" },
+  editText: {
+    color: "#c2b3ff",
+    fontSize: 18,
+  },
+  deleteText: {
+    color: "#ff8a8a",
+    fontSize: 18,
+  },
+  actionsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  visitorThumb: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+  },
+  mobileList: {
+    gap: 12,
+  },
+  mobileCard: {
+    backgroundColor: "#16233b",
+    borderRadius: 16,
+    padding: 14,
+  },
+  mobileCardTop: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "flex-start",
+  },
+  mobileInfo: {
+    flex: 1,
+  },
+  mobileFooter: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    alignItems: "center",
+  },
+  mobileBadgesRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  visitorThumbMobile: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
@@ -1054,5 +1532,29 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 20,
   },
-  modalTitle: { color: "#fff", fontSize: 24, fontWeight: "700", marginBottom: 8 },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+
+  workerModalCard: {
+  backgroundColor: "#16233b",
+  borderRadius: 18,
+  maxHeight: "88%",
+  width: "100%",
+  paddingTop: 18,
+},
+
+workerModalContent: {
+  paddingHorizontal: 20,
+  paddingBottom: 24,
+},
+
+captureCardModal: {
+  alignItems: "flex-start",
+  marginBottom: 8,
+},
 });
+

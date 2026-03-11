@@ -9,7 +9,7 @@ import {
   useWindowDimensions,
   ScrollView,
 } from "react-native";
-import { API_BASE_URL } from "../config/api";
+import { adminLogin } from "../services/api";
 
 export default function AdminLoginScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -28,31 +28,10 @@ export default function AdminLoginScreen({ navigation }) {
 
       setLoading(true);
 
-      const res = await fetch(`${API_BASE_URL}/admin/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: username.trim(),
-          password: password.trim(),
-        }),
+      const data = await adminLogin({
+        username: username.trim(),
+        password: password.trim(),
       });
-
-      const text = await res.text();
-      let data = null;
-
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        data = text;
-      }
-
-      if (!res.ok) {
-        throw new Error(
-          typeof data === "string"
-            ? data
-            : data?.detail || "No se pudo iniciar sesión"
-        );
-      }
 
       if (data?.ok) {
         navigation.replace("AdminHome");
@@ -60,7 +39,7 @@ export default function AdminLoginScreen({ navigation }) {
         Alert.alert("Error", "Credenciales incorrectas");
       }
     } catch (e) {
-      Alert.alert("Error", e?.message || "Network request failed");
+      Alert.alert("Error", e?.message || "No se pudo iniciar sesión");
     } finally {
       setLoading(false);
     }
@@ -120,7 +99,10 @@ export default function AdminLoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#07111f" },
+  screen: {
+    flex: 1,
+    backgroundColor: "#07111f",
+  },
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
