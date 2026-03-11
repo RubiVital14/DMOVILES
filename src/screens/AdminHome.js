@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Modal,
   Image,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   fetchWorkers,
   fetchLogs,
@@ -52,6 +53,7 @@ export default function AdminHome({ navigation }) {
 
   const [adminUsername, setAdminUsername] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
 
   const [passwordUsername, setPasswordUsername] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -77,9 +79,11 @@ export default function AdminHome({ navigation }) {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const now = new Date();
   const today =
@@ -94,20 +98,45 @@ export default function AdminHome({ navigation }) {
     return ["Todos", ...Array.from(set)];
   }, [workers]);
 
+  const normalizeAction = (value) => {
+    const val = String(value || "").trim().toLowerCase();
+    if (val === "in") return "Entrada";
+    if (val === "out") return "Salida";
+    return value;
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString();
+  };
+
+  const getDayString = (value) => {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
   const entradasHoy = logs.filter(
     (l) =>
-      l.action === "Entrada" &&
-      String(l.created_at || "").slice(0, 10) === today
+      normalizeAction(l.action) === "Entrada" &&
+      getDayString(l.created_at) === today
   ).length;
 
   const salidasHoy = logs.filter(
     (l) =>
-      l.action === "Salida" &&
-      String(l.created_at || "").slice(0, 10) === today
+      normalizeAction(l.action) === "Salida" &&
+      getDayString(l.created_at) === today
   ).length;
 
   const visitantesHoy = visitors.filter(
-    (v) => String(v.created_at || "").slice(0, 10) === today
+    (v) => getDayString(v.created_at) === today
   ).length;
 
   const filteredLogs = useMemo(() => {
@@ -121,13 +150,15 @@ export default function AdminHome({ navigation }) {
         String(l.area || "").toLowerCase().includes(q) ||
         String(l.method || "").toLowerCase().includes(q);
 
+      const action = normalizeAction(l.action);
+
       const matchesType =
-        filterType === "Todos" || String(l.action || "") === filterType;
+        filterType === "Todos" || String(action || "") === filterType;
 
       const matchesDept =
         filterDept === "Todos" || String(l.area || "") === filterDept;
 
-      const logDate = String(l.created_at || "").slice(0, 10);
+      const logDate = getDayString(l.created_at);
       const matchesFrom = !dateFrom || logDate >= dateFrom;
       const matchesTo = !dateTo || logDate <= dateTo;
 
@@ -164,7 +195,8 @@ export default function AdminHome({ navigation }) {
         String(v.full_name || "").toLowerCase().includes(q) ||
         String(v.company || "").toLowerCase().includes(q) ||
         String(v.phone || "").toLowerCase().includes(q) ||
-        String(v.reason || "").toLowerCase().includes(q)
+        String(v.reason || "").toLowerCase().includes(q) ||
+        String(v.created_at || "").toLowerCase().includes(q)
       );
     });
   }, [visitors, search]);
@@ -196,18 +228,24 @@ export default function AdminHome({ navigation }) {
 
   const handleCreateAdmin = async () => {
     try {
-      if (!adminUsername.trim() || !adminPassword.trim()) {
-        Alert.alert("Error", "Completa usuario y contraseña");
+      if (
+        !adminUsername.trim() ||
+        !adminPassword.trim() ||
+        !adminEmail.trim()
+      ) {
+        Alert.alert("Error", "Completa usuario, contraseña y correo");
         return;
       }
 
       await createAdmin({
         username: adminUsername.trim(),
         password: adminPassword.trim(),
+        email: adminEmail.trim().toLowerCase(),
       });
 
       setAdminUsername("");
       setAdminPassword("");
+      setAdminEmail("");
       setShowAdminForm(false);
       Alert.alert("Correcto", "Administrador creado");
     } catch (e) {
@@ -366,10 +404,7 @@ export default function AdminHome({ navigation }) {
               <Text style={styles.headerGhostText}>Cambiar contraseña</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.headerGhostBtn}
-              onPress={handleLogout}
-            >
+            <TouchableOpacity style={styles.headerGhostBtn} onPress={handleLogout}>
               <Text style={styles.headerGhostText}>Cerrar sesión</Text>
             </TouchableOpacity>
           </View>
@@ -379,11 +414,7 @@ export default function AdminHome({ navigation }) {
           <KpiCard label="ENTRADAS HOY" value={entradasHoy} accent="#10b981" />
           <KpiCard label="SALIDAS HOY" value={salidasHoy} accent="#f59e0b" />
           <KpiCard label="EMPLEADOS" value={workers.length} accent="#7c3aed" />
-          <KpiCard
-            label="VISITANTES HOY"
-            value={visitantesHoy}
-            accent="#0ea5e9"
-          />
+          <KpiCard label="VISITANTES HOY" value={visitantesHoy} accent="#0ea5e9" />
         </View>
 
         <View style={styles.tabsRow}>
@@ -456,88 +487,82 @@ export default function AdminHome({ navigation }) {
             {!isPhone ? (
               <View style={styles.tableShell}>
                 <View style={styles.tableHeader}>
-                  <Text style={[styles.headerCell, { flex: 1.4 }]}>
-                    Empleado
-                  </Text>
-                  <Text style={[styles.headerCell, { flex: 1.1 }]}>
-                    No. Empleado
-                  </Text>
-                  <Text style={[styles.headerCell, { flex: 1.3 }]}>
-                    Departamento
-                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.4 }]}>Empleado</Text>
+                  <Text style={[styles.headerCell, { flex: 1.1 }]}>No. Empleado</Text>
+                  <Text style={[styles.headerCell, { flex: 1.3 }]}>Departamento</Text>
                   <Text style={[styles.headerCell, { flex: 1 }]}>Tipo</Text>
                   <Text style={[styles.headerCell, { flex: 1 }]}>Método</Text>
-                  <Text style={[styles.headerCell, { flex: 1.6 }]}>
-                    Fecha y Hora
-                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.6 }]}>Fecha y Hora</Text>
                 </View>
 
                 <View style={styles.tableCard}>
-                  {filteredLogs.map((l) => (
-                    <View key={l.id} style={styles.workerRow}>
-                      <View style={[styles.cell, { flex: 1.4 }]}>
-                        <Text style={styles.workerName}>{l.full_name}</Text>
-                      </View>
-                      <View style={[styles.cell, { flex: 1.1 }]}>
-                        <Text style={styles.workerMeta}>{l.employee_no}</Text>
-                      </View>
-                      <View style={[styles.cell, { flex: 1.3 }]}>
-                        <Text style={styles.workerMeta}>{l.area}</Text>
-                      </View>
-                      <View style={[styles.cell, { flex: 1 }]}>
-                        <View
-                          style={
-                            l.action === "Entrada"
-                              ? styles.entryBadge
-                              : styles.exitBadge
-                          }
-                        >
-                          <Text style={styles.badgeText}>{l.action}</Text>
+                  {filteredLogs.map((l) => {
+                    const action = normalizeAction(l.action);
+                    return (
+                      <View key={l.id} style={styles.workerRow}>
+                        <View style={[styles.cell, { flex: 1.4 }]}>
+                          <Text style={styles.workerName}>{l.full_name}</Text>
                         </View>
-                      </View>
-                      <View style={[styles.cell, { flex: 1 }]}>
-                        <View style={styles.methodBadge}>
-                          <Text style={styles.badgeText}>
-                            {l.method || "Rostro"}
+                        <View style={[styles.cell, { flex: 1.1 }]}>
+                          <Text style={styles.workerMeta}>{l.employee_no}</Text>
+                        </View>
+                        <View style={[styles.cell, { flex: 1.3 }]}>
+                          <Text style={styles.workerMeta}>{l.area}</Text>
+                        </View>
+                        <View style={[styles.cell, { flex: 1 }]}>
+                          <View
+                            style={
+                              action === "Entrada"
+                                ? styles.entryBadge
+                                : styles.exitBadge
+                            }
+                          >
+                            <Text style={styles.badgeText}>{action}</Text>
+                          </View>
+                        </View>
+                        <View style={[styles.cell, { flex: 1 }]}>
+                          <View style={styles.methodBadge}>
+                            <Text style={styles.badgeText}>{l.method || "Rostro"}</Text>
+                          </View>
+                        </View>
+                        <View style={[styles.cell, { flex: 1.6 }]}>
+                          <Text style={styles.workerMeta}>
+                            {formatDateTime(l.created_at)}
                           </Text>
                         </View>
                       </View>
-                      <View style={[styles.cell, { flex: 1.6 }]}>
-                        <Text style={styles.workerMeta}>{l.created_at}</Text>
-                      </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               </View>
             ) : (
               <View style={styles.mobileList}>
-                {filteredLogs.map((l) => (
-                  <View key={l.id} style={styles.mobileCard}>
-                    <Text style={styles.workerName}>{l.full_name}</Text>
-                    <Text style={styles.workerMeta}>
-                      Empleado #{l.employee_no}
-                    </Text>
-                    <Text style={styles.workerMeta}>{l.area}</Text>
-                    <Text style={styles.workerMeta}>{l.created_at}</Text>
+                {filteredLogs.map((l) => {
+                  const action = normalizeAction(l.action);
+                  return (
+                    <View key={l.id} style={styles.mobileCard}>
+                      <Text style={styles.workerName}>{l.full_name}</Text>
+                      <Text style={styles.workerMeta}>Empleado #{l.employee_no}</Text>
+                      <Text style={styles.workerMeta}>{l.area}</Text>
+                      <Text style={styles.workerMeta}>{formatDateTime(l.created_at)}</Text>
 
-                    <View style={styles.mobileBadgesRow}>
-                      <View
-                        style={
-                          l.action === "Entrada"
-                            ? styles.entryBadge
-                            : styles.exitBadge
-                        }
-                      >
-                        <Text style={styles.badgeText}>{l.action}</Text>
-                      </View>
-                      <View style={styles.methodBadge}>
-                        <Text style={styles.badgeText}>
-                          {l.method || "Rostro"}
-                        </Text>
+                      <View style={styles.mobileBadgesRow}>
+                        <View
+                          style={
+                            action === "Entrada"
+                              ? styles.entryBadge
+                              : styles.exitBadge
+                          }
+                        >
+                          <Text style={styles.badgeText}>{action}</Text>
+                        </View>
+                        <View style={styles.methodBadge}>
+                          <Text style={styles.badgeText}>{l.method || "Rostro"}</Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </>
@@ -546,9 +571,7 @@ export default function AdminHome({ navigation }) {
         {activeTab === "empleados" && (
           <>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>
-                Empleados ({filteredWorkers.length})
-              </Text>
+              <Text style={styles.sectionTitle}>Empleados ({filteredWorkers.length})</Text>
 
               <TouchableOpacity
                 style={styles.primaryBtn}
@@ -568,104 +591,99 @@ export default function AdminHome({ navigation }) {
               onChangeText={setSearch}
             />
 
-            <Modal visible={showWorkerForm} transparent animationType="fade">
-  <View style={styles.modalOverlay}>
-    <View style={styles.workerModalCard}>
-      <ScrollView
-        contentContainerStyle={styles.workerModalContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.modalTitle}>Nuevo Empleado</Text>
+            {showWorkerForm && (
+              <View style={styles.formCardBig}>
+                <View style={[styles.formCardRow, isPhone && styles.formCardColumn]}>
+                  <View style={styles.captureCard}>
+                    <View style={styles.capturePreview}>
+                      <Text style={styles.captureIcon}>📷</Text>
+                    </View>
 
-        <View style={styles.captureCardModal}>
-          <View style={styles.capturePreview}>
-            <Text style={styles.captureIcon}>📷</Text>
-          </View>
+                    <TouchableOpacity>
+                      <Text style={styles.captureText}>Capturar cara</Text>
+                    </TouchableOpacity>
 
-          <TouchableOpacity>
-            <Text style={styles.captureText}>Capturar cara</Text>
-          </TouchableOpacity>
+                    <Text style={styles.captureWarn}>
+                      Requerida para reconocimiento
+                    </Text>
+                  </View>
 
-          <Text style={styles.captureWarn}>
-            Requerida para reconocimiento
-          </Text>
-        </View>
+                  <View style={styles.formInputsBig}>
+                    <Text style={styles.label}>Nombre completo *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={name}
+                      onChangeText={setName}
+                      placeholder="Nombre completo"
+                      placeholderTextColor="#8ea0c0"
+                    />
 
-        <Text style={styles.label}>Nombre completo *</Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="Nombre completo"
-          placeholderTextColor="#8ea0c0"
-        />
+                    <View style={[styles.inlineRow, isPhone && styles.inlineColumn]}>
+                      <View style={styles.inlineCol}>
+                        <Text style={styles.label}>No. Empleado *</Text>
+                        <View style={styles.readonlyBox}>
+                          <Text style={styles.readonlyText}>
+                            Se asigna automáticamente
+                          </Text>
+                        </View>
+                      </View>
 
-        <Text style={styles.label}>No. Empleado *</Text>
-        <View style={styles.readonlyBox}>
-          <Text style={styles.readonlyText}>
-            Se asigna automáticamente
-          </Text>
-        </View>
+                      <View style={styles.inlineCol}>
+                        <Text style={styles.label}>Departamento *</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={area}
+                          onChangeText={setArea}
+                          placeholder="Departamento"
+                          placeholderTextColor="#8ea0c0"
+                        />
+                      </View>
+                    </View>
 
-        <Text style={styles.label}>Departamento *</Text>
-        <TextInput
-          style={styles.input}
-          value={area}
-          onChangeText={setArea}
-          placeholder="Departamento"
-          placeholderTextColor="#8ea0c0"
-        />
+                    <Text style={styles.label}>Correo electrónico *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={email}
+                      onChangeText={setEmail}
+                      placeholder="correo@empresa.com"
+                      placeholderTextColor="#8ea0c0"
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
 
-        <Text style={styles.label}>Correo electrónico *</Text>
-        <TextInput
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          placeholder="correo@empresa.com"
-          placeholderTextColor="#8ea0c0"
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
+                    <View style={styles.formActions}>
+                      <TouchableOpacity
+                        style={styles.cancelBtn}
+                        onPress={() => {
+                          setShowWorkerForm(false);
+                          setName("");
+                          setArea("");
+                          setEmail("");
+                        }}
+                      >
+                        <Text style={styles.cancelBtnText}>Cancelar</Text>
+                      </TouchableOpacity>
 
-        <View style={styles.formActions}>
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={() => {
-              setShowWorkerForm(false);
-              setName("");
-              setArea("");
-              setEmail("");
-            }}
-          >
-            <Text style={styles.cancelBtnText}>Cancelar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.primaryBtnSmall}
-            onPress={handleCreateWorker}
-          >
-            <Text style={styles.primaryBtnText}>Guardar Empleado</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </View>
-  </View>
-</Modal>
+                      <TouchableOpacity
+                        style={styles.primaryBtnSmall}
+                        onPress={handleCreateWorker}
+                      >
+                        <Text style={styles.primaryBtnText}>Crear Empleado</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            )}
 
             {!isPhone ? (
               <View style={styles.tableShell}>
                 <View style={styles.tableHeader}>
                   <Text style={[styles.headerCell, { flex: 0.8 }]}>Foto</Text>
                   <Text style={[styles.headerCell, { flex: 1.5 }]}>Nombre</Text>
-                  <Text style={[styles.headerCell, { flex: 1.2 }]}>
-                    No. Empleado
-                  </Text>
-                  <Text style={[styles.headerCell, { flex: 1.5 }]}>
-                    Departamento
-                  </Text>
-                  <Text style={[styles.headerCell, { flex: 1.7 }]}>
-                    Correo
-                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.2 }]}>No. Empleado</Text>
+                  <Text style={[styles.headerCell, { flex: 1.5 }]}>Departamento</Text>
+                  <Text style={[styles.headerCell, { flex: 1.7 }]}>Correo</Text>
                   <Text style={[styles.headerCell, { flex: 1 }]}>Estado</Text>
                   <Text style={[styles.headerCell, { flex: 1 }]}>Acciones</Text>
                 </View>
@@ -676,9 +694,7 @@ export default function AdminHome({ navigation }) {
                       <View style={[styles.cell, { flex: 0.8 }]}>
                         <View style={styles.avatarCircle}>
                           <Text style={styles.avatarLetter}>
-                            {String(w.full_name || "?")
-                              .charAt(0)
-                              .toUpperCase()}
+                            {String(w.full_name || "?").charAt(0).toUpperCase()}
                           </Text>
                         </View>
                       </View>
@@ -726,17 +742,13 @@ export default function AdminHome({ navigation }) {
                     <View style={styles.mobileCardTop}>
                       <View style={styles.avatarCircle}>
                         <Text style={styles.avatarLetter}>
-                          {String(w.full_name || "?")
-                            .charAt(0)
-                            .toUpperCase()}
+                          {String(w.full_name || "?").charAt(0).toUpperCase()}
                         </Text>
                       </View>
 
                       <View style={styles.mobileInfo}>
                         <Text style={styles.workerName}>{w.full_name}</Text>
-                        <Text style={styles.workerMeta}>
-                          Empleado #{w.employee_no}
-                        </Text>
+                        <Text style={styles.workerMeta}>Empleado #{w.employee_no}</Text>
                         <Text style={styles.workerMeta}>{w.area}</Text>
                         <Text style={styles.workerMeta}>{w.email || "-"}</Text>
                       </View>
@@ -784,12 +796,8 @@ export default function AdminHome({ navigation }) {
                 <View style={styles.tableHeader}>
                   <Text style={[styles.headerCell, { flex: 0.8 }]}>Foto</Text>
                   <Text style={[styles.headerCell, { flex: 1.5 }]}>Nombre</Text>
-                  <Text style={[styles.headerCell, { flex: 1.4 }]}>
-                    Empresa
-                  </Text>
-                  <Text style={[styles.headerCell, { flex: 1.1 }]}>
-                    Teléfono
-                  </Text>
+                  <Text style={[styles.headerCell, { flex: 1.4 }]}>Empresa</Text>
+                  <Text style={[styles.headerCell, { flex: 1.1 }]}>Teléfono</Text>
                   <Text style={[styles.headerCell, { flex: 1.5 }]}>Motivo</Text>
                   <Text style={[styles.headerCell, { flex: 1.5 }]}>Fecha</Text>
                 </View>
@@ -799,10 +807,7 @@ export default function AdminHome({ navigation }) {
                     <View key={v.id} style={styles.workerRow}>
                       <View style={[styles.cell, { flex: 0.8 }]}>
                         {v.photo_uri ? (
-                          <Image
-                            source={{ uri: v.photo_uri }}
-                            style={styles.visitorThumb}
-                          />
+                          <Image source={{ uri: v.photo_uri }} style={styles.visitorThumb} />
                         ) : (
                           <View style={styles.avatarCircle}>
                             <Text style={styles.avatarLetter}>V</Text>
@@ -827,7 +832,9 @@ export default function AdminHome({ navigation }) {
                       </View>
 
                       <View style={[styles.cell, { flex: 1.5 }]}>
-                        <Text style={styles.workerMeta}>{v.created_at || "-"}</Text>
+                        <Text style={styles.workerMeta}>
+                          {formatDateTime(v.created_at)}
+                        </Text>
                       </View>
                     </View>
                   ))}
@@ -839,10 +846,7 @@ export default function AdminHome({ navigation }) {
                   <View key={v.id} style={styles.mobileCard}>
                     <View style={styles.mobileCardTop}>
                       {v.photo_uri ? (
-                        <Image
-                          source={{ uri: v.photo_uri }}
-                          style={styles.visitorThumbMobile}
-                        />
+                        <Image source={{ uri: v.photo_uri }} style={styles.visitorThumbMobile} />
                       ) : (
                         <View style={styles.avatarCircle}>
                           <Text style={styles.avatarLetter}>V</Text>
@@ -855,7 +859,7 @@ export default function AdminHome({ navigation }) {
                         <Text style={styles.workerMeta}>{v.phone || "-"}</Text>
                         <Text style={styles.workerMeta}>{v.reason || "-"}</Text>
                         <Text style={styles.workerMeta}>
-                          {v.created_at || "-"}
+                          {formatDateTime(v.created_at)}
                         </Text>
                       </View>
                     </View>
@@ -932,6 +936,17 @@ export default function AdminHome({ navigation }) {
               onChangeText={setAdminUsername}
               placeholder="Nuevo usuario"
               placeholderTextColor="#8ea0c0"
+            />
+
+            <Text style={styles.label}>Correo electrónico</Text>
+            <TextInput
+              style={styles.input}
+              value={adminEmail}
+              onChangeText={setAdminEmail}
+              placeholder="correo@empresa.com"
+              placeholderTextColor="#8ea0c0"
+              autoCapitalize="none"
+              keyboardType="email-address"
             />
 
             <Text style={styles.label}>Contraseña</Text>
@@ -1035,13 +1050,8 @@ function KpiCard({ label, value, accent }) {
 
 function Tab({ label, active, onPress }) {
   return (
-    <TouchableOpacity
-      style={[styles.tab, active && styles.tabActive]}
-      onPress={onPress}
-    >
-      <Text style={[styles.tabText, active && styles.tabTextActive]}>
-        {label}
-      </Text>
+    <TouchableOpacity style={[styles.tab, active && styles.tabActive]} onPress={onPress}>
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -1538,23 +1548,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 8,
   },
-
-  workerModalCard: {
-  backgroundColor: "#16233b",
-  borderRadius: 18,
-  maxHeight: "88%",
-  width: "100%",
-  paddingTop: 18,
-},
-
-workerModalContent: {
-  paddingHorizontal: 20,
-  paddingBottom: 24,
-},
-
-captureCardModal: {
-  alignItems: "flex-start",
-  marginBottom: 8,
-},
 });
-
